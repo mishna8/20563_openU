@@ -7,6 +7,7 @@ using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using System.Transactions;
 using System.Xml.Linq;
+using System.Collections.Generic;
 
 namespace PROJ
 {
@@ -649,8 +650,79 @@ namespace PROJ
             }
         }
 
+      
+        public static void ProcessFileAndDatabase(string filePath)
+        {
+            
+            // Define a regex pattern to match "x" and "y" pairs
+            Regex regex = new Regex(@"\b(x)\b\s+(\w+)\b(y)\b");
 
-        static void AddEntriesFromFiles( string databaseName, string directoryPath)
+            // Create a list to store x/y pairs
+            var wordPairs = new List<(string x, string y)>();
+
+            // Read the file line by line
+            using (StreamReader reader = new StreamReader(filePath))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    MatchCollection matches = regex.Matches(line);
+                    foreach (Match match in matches)
+                    {
+                        string x = match.Groups[1].Value;
+                        string y = match.Groups[2].Value;
+                        wordPairs.Add((x, y));
+                    }
+                }
+            }
+
+            // Create a dictionary to store id for each unique (x, y) pair
+            Dictionary<(string x, string y), int> idDictionary = new Dictionary<(string x, string y), int>();
+
+            // Process each (x, y) pair and interact with the database
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                foreach (var (x, y) in wordPairs)
+                {
+                    // Check if (x, y) pair exists in the database
+                    SqlCommand checkCommand = new SqlCommand("SELECT id FROM metadata WHERE type = @x AND value = @y", connection);
+                    checkCommand.Parameters.AddWithValue("@x", x);
+                    checkCommand.Parameters.AddWithValue("@y", y);
+
+                    int id = -1; // Default value if not found
+
+                    using (SqlDataReader reader = checkCommand.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            id = reader.GetInt32(0);
+                        }
+                    }
+
+                    // If not found, insert a new entry
+                    if (id == -1)
+                    {
+                        SqlCommand insertCommand = new SqlCommand("INSERT INTO metadata (type, value) VALUES (@x, @y); SELECT SCOPE_IDENTITY();", connection);
+                        insertCommand.Parameters.AddWithValue("@x", x);
+                        insertCommand.Parameters.AddWithValue("@y", y);
+
+                        id = Convert.ToInt32(insertCommand.ExecuteScalar());
+                    }
+
+                    // Store the id in the dictionary
+                    idDictionary[(x, y)] = id;
+                }
+
+                connection.Close();
+            }
+
+            // Return the first 5 (x, y) pairs with their ids
+            var result = idDictionary.Take(5).ToList();
+        }
+
+    static void AddEntriesFromFiles( string databaseName, string directoryPath)
         {
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
@@ -1125,7 +1197,7 @@ namespace PROJ
 
         static void stats()
         {
-            
+                //you enter a loop where you can drill down to see different stats 
                 while (true)
                 {
                     Console.WriteLine("Choose an option:");
@@ -1135,9 +1207,11 @@ namespace PROJ
 
                     switch (option)
                     {
+                        //here you pass to the function where you can see the file level view
                         case "1":
                             SelectFile();
                             break;
+                        //here you exit the loop
                         case "2":
                             return;
                         default:
@@ -1149,13 +1223,15 @@ namespace PROJ
 
         static void SelectFile()
         {
-            Console.WriteLine("Enter a file name:");
-            string fileName = Console.ReadLine();
-
+            
             while (true)
             {
+                //enter the file you want to view
+                Console.WriteLine("Enter a file name:");
+                string fileName = Console.ReadLine();
                 using (SqlConnection connection = new SqlConnection(connectionString))
                 {
+                    //preper paragraph information for next choise 
                     connection.Open();
                     int paragCount = 0;
                     string query = "SELECT ParagCount FROM Files WHERE FileName = @fileName";
@@ -1173,6 +1249,7 @@ namespace PROJ
                     string option = Console.ReadLine();
                     switch (option)
                     {
+                        //here you get the file level stats
                         case "1":
                             {
                                 string countquery = "SELECT LineCount, WordCount FROM Files WHERE FileName = @fileName";
@@ -1193,8 +1270,11 @@ namespace PROJ
                                 }
                                 break;
                             }
+                        //here you drill down to the poaragraph number in the file
                         case "2":
-                            ViewParagraphs(fileName);
+                            Console.WriteLine("Enter a file name:");
+                            int paranum = Convert.ToInt32(Console.ReadLine());
+                            statsParagraphs(fileName, paranum);
                             break;
                         case "3":
                             stats();
@@ -1207,22 +1287,45 @@ namespace PROJ
             }
         }
 
-            static void ViewParagraphs(string fileName)
+            static void statsParagraphs(string fileName, int paranum)
             {
                 using (SqlConnection connection = new SqlConnection(connectionString))
                 {
                     connection.Open();
-
-                    // Query to retrieve paragraph and counts information for the selected file
-                    string query = "SELECT DISTINCT paragNum, COUNT(lineNum) AS SentenceCount, SUM(charoFwORDCount) AS WordCount " +
-                                   "FROM Content " +
-                                   "WHERE File = @fileName " +
-                                   "GROUP BY paragNum " +
-                                   "ORDER BY paragNum";
+                int words; int paragraph;
+                // Query to retrieve paragraph and counts information for the selected file
+                //query to sum the last word number in each sentence which is the max where the given paragraph nunmer and file
+                    string query = @"
+                SELECT SUM(LastWordInSentence.wordInLineNum) AS WordCountInParagraph
+                FROM Content AS LastWordInSentence
+                WHERE LastWordInSentence.paragNum = @ParagraphNumber
+                AND LastWordInSentence.file = @FileName
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM Content AS NextWordInSentence
+                    WHERE NextWordInSentence.paragNum = @ParagraphNumber
+                    AND NextWordInSentence.file = @FileName
+                    AND NextWordInSentence.lineNum = LastWordInSentence.lineNum
+                    AND NextWordInSentence.wordInLineNum > LastWordInSentence.wordInLineNum
+                )";
 
                     using (SqlCommand command = new SqlCommand(query, connection))
                     {
-                        command.Parameters.AddWithValue("@fileName", fileName);
+                        command.Parameters.AddWithValue("@ParagraphNumber", paragraphNumber);
+                        command.Parameters.AddWithValue("@FileName", fileName);
+
+                        object result = command.ExecuteScalar();
+
+                        if (result != DBNull.Value)
+                        {
+                             Convert.ToInt32(result);
+                        }
+                        else
+                        {
+                            return 0; // No words found in the specified paragraph
+                        }
+
+                    command.Parameters.AddWithValue("@fileName", fileName);
 
                         SqlDataReader reader = command.ExecuteReader();
                         while (reader.Read())
