@@ -112,8 +112,8 @@ namespace PROJmain
                                                         case "metadata":
                                                             {
                                                                 // Get user input 
-                                                                Console.WriteLine("Enter a metadata type:");
-                                                                string MTD = Console.ReadLine();
+                                                                Console.WriteLine("Enter a metadata type number:[Patient=1,Doctor=2,Diagnosis=3,Treatment=4]");
+                                                                string MTD =  Convert.ToInt32(Console.ReadLine());
                                                                 Console.WriteLine("Enter a word:");
                                                                 string word = Console.ReadLine();
                                                                 if (!string.IsNullOrEmpty(MTD) && !string.IsNullOrEmpty(word))

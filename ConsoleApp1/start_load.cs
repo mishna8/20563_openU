@@ -72,14 +72,14 @@ namespace PROJcreate
                     //create the METADATA id by file table
                     //THE COLUMS:  FileName, Date,
                     //Patient, Doctor, Diag, Treat, Summary as id numbers of the metadata found
-                    string createMTDTableQuery = $"CREATE TABLE {"MetaData"} ({"FileName"} NVARCHAR(MAX), {"Date"} DATE, {"Patient"} NVARCHAR(MAX),{"Doctor"} NVARCHAR(MAX),{"Diag"} NVARCHAR(MAX),{"Treat"} NVARCHAR(MAX))";
+                    string createMTDTableQuery = $"CREATE TABLE {"MetaData"} ({"FileName"} NVARCHAR(MAX), {"Patient"} NVARCHAR(MAX),{"Doctor"} NVARCHAR(MAX),{"Diag"} NVARCHAR(MAX),{"Treat"} NVARCHAR(MAX))";
                     SqlCommand createMTDTableCommand = new SqlCommand(createMTDTableQuery, connection);
                     createMTDTableCommand.ExecuteNonQuery();
 
                     Console.WriteLine("MetaData table created successfully!");
 
                     ///1.2.0
-                    ///create the matadata values files 
+                    //create the matadata values files 
                     //columns: ID , value , type (Patient=1, Doctor=2, Diag=3, Treat=4)
                     string createMTDregTableQuery = $"CREATE TABLE {"MTDREG"} ({"ID"} INT, {"value"} NVARCHAR(MAX), {"type"} INT)";
                     SqlCommand createMTDregTableCommand = new SqlCommand(createMTDregTableQuery, connection);
@@ -157,6 +157,7 @@ namespace PROJcreate
                         if (fileCount == 0)
                         {
                             // handle files properties instert
+                            // start getting the properties 
                             string fileName = Path.GetFileName(filePath);
                             // get file stats  
                             int paragraphCount, lineCount, wordCount;
@@ -174,10 +175,16 @@ namespace PROJcreate
                                 insertFileCommand.ExecuteNonQuery();
                             }
 
-                            //handle the word and metadata inserts 
-                            wordInsert(filePath);
-
-                            //handle the metadata mapping insert
+                            //handle metadata mapping entry for the file 
+                            string insertMTDQuery = $"INSERT INTO Files (FileName, Patient, Doctor ,Diag ,Treat )" +
+                                                      $"VALUES (@fileName, 0,0,0,0)";
+                            using (SqlCommand insertMTDCommand = new SqlCommand(insertMTDQuery, connection))
+                            {
+                                insertMTDCommand.Parameters.AddWithValue("@fileName", filePath);
+                                insertMTDCommand.ExecuteNonQuery();
+                            }
+                            //handle the word and metadata inserts & mapping
+                            wordInsert(filePath);                           
                         }
                     }
 
@@ -240,7 +247,7 @@ namespace PROJcreate
         }
 
 
-        public static void ProcessFileAndInsertData(string filePath)
+        public static void wordInsert(string filePath)
         {
             // Initialize counters
             int paragNum = 0;
@@ -260,17 +267,22 @@ namespace PROJcreate
                 while ((line = reader.ReadLine()) != null)
                 {
                     // Increment counters
+                    //when we get to each new line in total file the line counter increase
                     lineNum++;
+                    // when we get to each new line in the current paragraph the counter increase
                     lineInParagNum++;
-                    charInLineNum = line.Length;
+                    //the word count in the new line will reset to start counting
+                    wordInLineNum = 0;
+                    //the char count in the new line will reset to start counting
+                    charInLineNum = 0;
 
                     // Check for paragraph break (empty line)
                     if (string.IsNullOrWhiteSpace(line))
                     {
+                        //when we get to new paragraph in total file the paragraph counter increase
                         paragNum++;
-                        lineInParagNum = 0;
-                        charInLineNum = 0;
-                        wordInLineNum = 0;
+                        //and the line count in the new paragraphe will reset to start counting
+                        lineInParagNum = 0;                         
                         continue;
                     }
 
@@ -278,28 +290,34 @@ namespace PROJcreate
                     string[] words = wordRegex.Matches(line.ToLower());
                     foreach (string word in words)
                     {
+                        //get the word's charecter number (length)
                         charInWordNum = word.Length;
+                        //when we get to new word in the current line the counter increase
                         wordInLineNum++;
 
                         // Insert word data into the "content" table
                         InsertWordData(word, filePath, charInWordNum, paragNum, lineInParagNum, lineNum, charInLineNum, wordInLineNum);
-
+                        
                         // Check for special words and call the corresponding function
                         switch (word)
                         {
-                            case "doctor":
-                                MTDHandle(word, 1, filePath);
-                                break;
                             case "patient":
-                                MTDHandle(word, 2, filePath);
+                                MTDHandler(word, 1, filePath);
+                                break;
+                            case "doctor":
+                                MTDHandler(word, 2, filePath);
                                 break;
                             case "diagnosis":
-                                MTDHandle(word, 3, filePath);
+                                MTDHandler(word, 3, filePath);
                                 break;
                             case "treatment":
-                                MTDHandle(word, 4, filePath);
+                                MTDHandler(word, 4, filePath);
                                 break;
                         }
+
+                        //after the new word the charecter in line count will prepare to the next word
+                        //counter wil move up by the number of charecters in the word we past plus one for the space between them;
+                        charInLineNum += charInWordNum + 1;
                     }
                 }
             }
@@ -350,10 +368,10 @@ namespace PROJcreate
             switch (number)
             {
                 case 1:
-                    columnName = "Doctor";
+                    columnName = "Patient";
                     break;
                 case 2:
-                    columnName = "Patient";
+                    columnName = "Doctor";
                     break;
                 case 3:
                     columnName = "Diag";

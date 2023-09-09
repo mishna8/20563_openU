@@ -15,9 +15,6 @@ namespace PROJ
     class wordProcess
     {
         
-        
-      
-
         ///--------------------------------------------------------------------------------------------///
         //outputs files that contain the inputed word
         static List<string> FindFileByWord(string word)
@@ -42,7 +39,7 @@ namespace PROJ
                             if (!string.IsNullOrEmpty(fileName) && !fileList.Contains(fileName))
                             {
                                 fileList.Add(fileName);
-                                //Console.WriteLine($"Found file: {fileName}");
+                                Console.WriteLine($"Found file: {fileName}");
                             }
                         }
                     }
@@ -51,38 +48,83 @@ namespace PROJ
             return fileList;
         }
 
-        //----will be changed---/
         //outputs files that contain the inputed word as a specified metadata value 
-        static List<string> FindFileByMTD(string MTDtype, string word)
+        static List<string> FindFileByMTD(int number, string word)
         {
             //the list of files 
             List<string> fileList = new List<string>();
 
+            int entryId = -1; // Default value if not found
+
+            // Create a SqlConnection
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
+                // Open the connection
                 connection.Open();
 
-                // Query to search for records containing the desired value in the specified metadata type  
-                string query = "SELECT FileName FROM MetaData WHERE @MTDtype LIKE '%' + @word + '%'";
-                
-                using (SqlCommand command = new SqlCommand(query, connection))
+                // Create a SqlCommand to check if the combination exists
+                string checkQuery = "SELECT id FROM MTDREG WHERE value = @word AND type = @number";
+                using (SqlCommand checkCommand = new SqlCommand(checkQuery, connection))
                 {
-                    command.Parameters.AddWithValue("@MTDtype", MTDtype);
-                    command.Parameters.AddWithValue("@word", word);
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    checkCommand.Parameters.AddWithValue("@word", word);
+                    checkCommand.Parameters.AddWithValue("@number", number);
+
+                    // Execute the query
+                    using (SqlDataReader reader = checkCommand.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            // Entry already exists, get the ID
+                            entryId = reader.GetInt32(0);
+                        }
+                    }
+                }
+
+                // If entryId is still -1, it means the combination doesn't exist, so we insert a new entry
+                if (entryId == -1)
+                {
+                    Console.WriteLine($"This metadata was not found");
+                    return fileList;
+                }
+
+                //if the combination was found find the file according to the ID found
+                //get the column
+                string columnName = "";
+                switch (number)
+                {
+                    case 1:
+                        columnName = "Patient";
+                        break;
+                    case 2:
+                        columnName = "Doctor";
+                        break;
+                    case 3:
+                        columnName = "Diag";
+                        break;
+                    case 4:
+                        columnName = "Treat";
+                        break;
+                    default:
+                        throw new ArgumentException("Invalid number.");
+                }
+
+                //find files matching the entryId in the specified column
+                string query = $"SELECT FileName FROM MetaData WHERE {columnName} = @entryId";
+                using (SqlCommand fileQueryCommand = new SqlCommand(query, connection))
+                {
+                    fileQueryCommand.Parameters.AddWithValue("@entryId", entryId);
+
+                    using (SqlDataReader reader = fileQueryCommand.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            string fileName = reader["FileName"].ToString();
-                            if (!string.IsNullOrEmpty(fileName) && !fileList.Contains(fileName))
-                            {
-                                fileList.Add(fileName);
-                                //Console.WriteLine($"Found file: {fileName}");
-                            }
+                            fileList.Add(reader.GetString(0));
+                            //Console.WriteLine($"Found file: {fileName}");
                         }
                     }
                 }
             }
+
             return fileList;
         }
 
@@ -325,11 +367,13 @@ namespace PROJ
                     CreateExpression(expression);
                     SearchExpression(expression);
                 }
-                //if prase exists return it indexes 
+                //if prase exists (or was just created) return the indexes of first word of the prase
                 else
                 {
+                    //get the startt of the expression
+                    string first = expression?.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)?.FirstOrDefault();
                     // Query to search for records containing the specified word
-                    string query = $"SELECT File, paragNum , lineInParagNum, lineNum, charInLineNum, FROM Content WHERE Exprs = ID)";
+                    string query = $"SELECT File, paragNum , lineInParagNum, lineNum, charInLineNum, FROM Content WHERE Exprs = @ID AND Word=@first)";
 
                     using (SqlCommand command = new SqlCommand(query, connection))
                     {
@@ -337,6 +381,8 @@ namespace PROJ
                         {
                             while (reader.Read())
                             {
+                                command.Parameters.AddWithValue("@first", first);
+                                command.Parameters.AddWithValue("@ID", ID);
                                 string File = reader["File"].ToString();
                                 int paragNum = int.Parse(reader["paragNum"].ToString());
                                 int lineInParagNum = int.Parse(reader["lineInParagNum"].ToString());
@@ -357,14 +403,14 @@ namespace PROJ
         static void CreateExpression(string expression)
         {
             //step 1 : add the expression to the expression table 
-            int MaxID = 0;// If the table is empty, return 1 as the starting ID            
+                      
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
                 connection.Open();
 
+                int MaxID = 0;// If the table is empty, return 1 as the starting ID  
                 //if the table is not empty get the last ID 
                 string GetMaxID = $"SELECT MAX(ID) FROM Expression";
-
                 using (SqlCommand IDcommand = new SqlCommand(GetMaxID, connection))
                 {
                     var result = IDcommand.ExecuteScalar();
@@ -391,8 +437,9 @@ namespace PROJ
             //step 2 : add the expression id to all instances in the content table 
 
             //handle non existance 
-        }
-        
+        }            
+
+
         static List<string> ExtractWords(string expression, out int wordCount)
         {
             string[] words = expression.Split(new[] { ' ', ',', '.', ';', ':', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
@@ -409,17 +456,11 @@ namespace PROJ
 
             wordCount = distinctWords.Count;
             return distinctWords;
-        }
-
-
-        
-        
-
+        }        
+       
 
         static void UpdateWordsWithPhraseId(List<string> words, int phraseId)
         {
-            // TODO: Set your database connection string
-            string connectionString = "Your_Connection_String_Here";
 
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
@@ -438,12 +479,217 @@ namespace PROJ
                     }
                 }
             }
-        }        
+        }
 
+        public void ProcessExpression(string expression)
+        {
+            string[] words = expression.Split(' '); // Split the expression into words
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string file, currWord;
+                int currlineNum, currWordNum;
+                //get the start of the expression
+                string exprWord = words.FirstOrDefault();
+                //find possible points that can continue to the phrase 
+                string query = $"SELECT Word, File, lineNum, wordInLineNum FROM Content WHERE Word=@first";
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@first", exprWord);
+
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            file = reader["File"].ToString();
+                            currWord = reader["Word"].ToString();
+                            currlineNum = int.Parse(reader["lineNum"].ToString());
+                            currWordNum = int.Parse(reader["wordInLineNum"].ToString());
+
+                            if (matchCheck(currWord, file, currlineNum, currWordNum))
+                            {
+                                // Process the matching entry here.
+                                // You can perform any action you need with the matching parameters.
+                                // For example:
+                                // DoSomething(file, currWord, currlineNum, currWordNum);
+                            }
+                        }
+                    }
+                }
+
+                // Define your matchCheck function to determine whether to include the parameter
+                bool matchCheck(string word, string file, int lineNum, int wordInLineNum)
+                {
+                    // Add your matching logic here.
+                    // Return true if the parameters should be included, false otherwise.
+                }
+
+                //now start a loop from the found 
+
+                using (SqlCommand command = new SqlCommand(updateQuery, connection))
+                {
+                    command.Parameters.AddWithValue("@Word", word);
+
+                    command.ExecuteNonQuery();
+                }
+                // for the length of the expression 
+                for (int i = 0; i < words.Length; i++)
+                {
+                    string word = words[i];
+                    List<(string file, int lineNum, int wordInLineNum)> matchingWords = new List<(string, int, int)>();
+
+                    // Query the Content table to find words that match the current word in the sentence
+                    string query = @"
+                    SELECT File, LineNum, WordInLineNum
+                    FROM Content
+                    WHERE WordValue = @word
+                    AND Exprs = 0"; // Make sure we haven't marked this word as part of an expression yet
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@word", word);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                string file = reader.GetString(0);
+                                int lineNum = reader.GetInt32(1);
+                                int wordInLineNum = reader.GetInt32(2);
+                                matchingWords.Add((file, lineNum, wordInLineNum));
+                            }
+                        }
+                    }
+
+                    if (matchingWords.Count > 0)
+                    {
+                        // Start matching the expression
+                        foreach (var (file, lineNum, wordInLineNum) in matchingWords)
+                        {
+                            bool isExpressionMatch = true;
+                            int currentIndex = i;
+                            int firstPoint = i;
+
+                            for (int j = 1; j < words.Length; j++)
+                            {
+                                currentIndex++;
+                                if (currentIndex >= words.Length)
+                                {
+                                    isExpressionMatch = false;
+                                    break;
+                                }
+
+                                var nextWord = GetNextWord(words[currentIndex], lineNum, wordInLineNum, file);
+                                if (nextWord == null || !nextWord.Equals(words[currentIndex], StringComparison.OrdinalIgnoreCase))
+                                {
+                                    isExpressionMatch = false;
+                                    break;
+                                }
+                            }
+
+                            if (isExpressionMatch)
+                            {
+                                // Mark all the words in the expression with Exprs = 1
+                                for (int k = firstPoint; k <= currentIndex; k++)
+                                {
+                                    MarkWordAsExpression(words[k], lineNum, wordInLineNum, file);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        //get the next word in the sentence and its index 
+        public (string nextWord, int nextLineNum, int nextWordInLineNum) GetNextWord(string currWord, int currLineNum, int currWordInLineNum, string file)
+        {
+            int nextWordInLine = currWordInLineNum + 1;
+            int nextLineNum = currLineNum;
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string query = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = @nextWordInLine)";
+
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@file", file);
+                    command.Parameters.AddWithValue("@nextLineNum", nextLineNum);
+                    command.Parameters.AddWithValue("@nextWordInLine", nextWordInLine);
+
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        if (reader.Read())
+                        {
+                            string nextWord = reader.GetString(0);
+                            return (nextWord, nextLineNum, nextWordInLine);
+                        }
+                    }
+                }
+            }
+
+            // If no word was found in the same line with WordInLineNum + 1, 
+            // increment currLineNum (and WordInLineNum = 0 )
+            nextLineNum = currLineNum + 1;
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string queryNextLine = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = 0)";
+
+                using (SqlCommand commandNextLine = new SqlCommand(queryNextLine, connection))
+                {
+                    commandNextLine.Parameters.AddWithValue("@file", file);
+                    commandNextLine.Parameters.AddWithValue("@nextLineNum", nextLineNum);
+
+                    using (SqlDataReader readerNextLine = commandNextLine.ExecuteReader())
+                    {
+                        if (readerNextLine.Read())
+                        {
+                            string nextWord = readerNextLine.GetString(0);
+                            return (nextWord, nextLineNum, 0);
+                        }
+                    }
+                }
+            }
+
+            // If no word was found in the next line, return (-1, 0, 0).
+            return ("-1", 0, 0);
+        }
+
+        private void MarkWordAsExpression(string word, int lineNum, int wordInLineNum, string file, int ID)
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string query = @"
+                UPDATE Content
+                SET Exprs = @ID
+                WHERE WordValue = @word
+                AND LineNum = @lineNum
+                AND WordInLineNum = @wordInLineNum
+                AND File = @file";
+
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@ID", ID);
+                    command.Parameters.AddWithValue("@word", word);
+                    command.Parameters.AddWithValue("@lineNum", lineNum);
+                    command.Parameters.AddWithValue("@wordInLineNum", wordInLineNum);
+                    command.Parameters.AddWithValue("@file", file);
+
+                    command.ExecuteNonQuery();
+                }
+            }
+        }
         ///--------------------------------------------------------------------------------------------///
 
         //--------------half made----------/
-        
+
         /*gets from the user a file ti view file-wide stats
         /then an option to drill dowwn to a pragraph to view in the selectd file a stats to a pargraph 
          */
@@ -795,19 +1041,6 @@ namespace PROJ
         }
 
 
-
-        ///--------------------------------------------------------------------------------------------///
-
-        static void info()
-        {
-
-            Console.WriteLine("the system commands:" +
-                "start - create the database and tables" +
-                "load - prompets a directory path to scan your file's data to the db" +
-                "group - prompets for a name and then action create/search, create will prompet the words to add" +
-                "expression - prompets for the sentence " +
-                "stats - ");
-        }
 
     }
 }
