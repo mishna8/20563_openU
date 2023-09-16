@@ -9,6 +9,7 @@ using System.Transactions;
 using System.Xml.Linq;
 using System.Collections.Generic;
 using PROJ;
+using System.Reflection.Metadata;
 
 namespace PROJ
 {
@@ -688,236 +689,236 @@ namespace PROJ
         }
         ///--------------------------------------------------------------------------------------------///
 
-        //--------------half made----------/
-
-        /*gets from the user a file ti view file-wide stats
-        /then an option to drill dowwn to a pragraph to view in the selectd file a stats to a pargraph 
-         */
+        ///shows the user the statistics of each level they choose to view
         static void stats()
         {
-                //you enter a loop where you can drill down to see different stats 
-                while (true)
-                {
-                    Console.WriteLine("Choose an option:");
-                    Console.WriteLine("1. Select a File");
-                    Console.WriteLine("2. Exit");
-                    string option = Console.ReadLine();
-
-                    switch (option)
-                    {
-                        //here you pass to the function where you can see the file level view
-                        case "1":
-                            SelectFile();
-                            break;
-                        //here you exit the loop
-                        case "2":
-                            return;
-                        default:
-                            Console.WriteLine("Invalid option. Please try again.");
-                            break;
-                    }
-                }
-        }
-
-        static void SelectFile()
-        {
-            
+            //first loop is file level with option to drill down to paragraph and line level
             while (true)
             {
-                //enter the file you want to view
-                Console.WriteLine("Enter a file name:");
-                string fileName = Console.ReadLine();
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                Console.WriteLine("Choose an option:");
+                Console.WriteLine("1. Select a File");
+                Console.WriteLine("2. Exit");
+                string option = Console.ReadLine();
+
+                switch (option)
                 {
-                    //preper paragraph information for next choise 
-                    connection.Open();
-                    int paragCount = 0;
-                    string query = "SELECT ParagCount FROM Files WHERE FileName = @fileName";
-                    using (SqlCommand command = new SqlCommand(query, connection))
-                    {
-                        command.Parameters.AddWithValue("@fileName", fileName);
-                        object result = command.ExecuteScalar();
-                        if (result != null && int.TryParse(result.ToString(), out int paragraphCount)) paragCount = paragraphCount;
-                        else { Console.WriteLine($"File '{fileName}' not found in the 'Files' table."); stats(); return; }
-                    }
-                    Console.WriteLine("Choose an option for the selected file:");
-                    Console.WriteLine("1. View Counts");
-                    Console.WriteLine($"2. select Paragraph number out of {paragCount}");
-                    Console.WriteLine("3. Exit to change file");
-                    string option = Console.ReadLine();
-                    switch (option)
-                    {
-                        //here you get the file level stats
-                        case "1":
-                            {
-                                string countquery = "SELECT LineCount, WordCount FROM Files WHERE FileName = @fileName";
-                                using (SqlCommand command = new SqlCommand(countquery, connection))
-                                {
-                                    command.Parameters.AddWithValue("@fileName", fileName);
-
-                                    SqlDataReader reader = command.ExecuteReader();
-                                    if (reader.Read())
-                                    {
-                                        int sentenceCount = Convert.ToInt32(reader["LineCount"]);
-                                        int wordCount = Convert.ToInt32(reader["WordCount"]);
-
-                                        Console.WriteLine($"paragraphs in {fileName}: {paragCount}");
-                                        Console.WriteLine($"Sentences in {fileName}: {sentenceCount}");
-                                        Console.WriteLine($"Words in {fileName}: {wordCount}");
-                                    }
-                                }
-                                break;
-                            }
-                        //here you drill down to the poaragraph number in the file
-                        case "2":
+                    //here user inputs the file and gets the stats 
+                    case "1":
+                        {
                             Console.WriteLine("Enter a file name:");
-                            int paranum = Convert.ToInt32(Console.ReadLine());
-                            statsParagraphs(fileName, paranum);
+                            string fileName = Console.ReadLine();
+                            //first check if file exists
+                            using (SqlConnection connection = new SqlConnection(connectionString))
+                            {
+                                connection.Open();
+                                int paragCounter = 0;
+                                // Create a parameterized SQL command to check if the file exists
+                                string query = "SELECT COUNT(*) FROM Files WHERE FileName = @fileNameOrPath OR FilePath = @fileNameOrPath";
+                                using (SqlCommand command = new SqlCommand(query, connection))
+                                {
+                                    command.Parameters.AddWithValue("@fileNameOrPath", fileNameOrPath);
+
+                                    int fileCount = Convert.ToInt32(command.ExecuteScalar());
+                                    //if it does , find its stats and present
+                                    if (fileCount > 0)
+                                    {
+                                        string countquery = "SELECT ParagCount, LineCount, WordCount FROM Files WHERE FileName = @fileName";
+                                        using (SqlCommand countcommand = new SqlCommand(countquery, connection))
+                                        {
+                                            countcommand.Parameters.AddWithValue("@fileName", fileName);
+
+                                            SqlDataReader reader = countcommand.ExecuteReader();
+                                            if (reader.Read())
+                                            {
+                                                paragCounter = Convert.ToInt32(reader["ParagCount"]);
+                                                int sentenceCounter = Convert.ToInt32(reader["LineCount"]);
+                                                int wordCounter = Convert.ToInt32(reader["WordCount"]);
+
+                                                Console.WriteLine($"paragraphs in {fileName}: {paragCounter}");
+                                                Console.WriteLine($"Sentences in {fileName}: {sentenceCounter}");
+                                                Console.WriteLine($"Words in {fileName}: {wordCounter}");
+                                            }
+                                        }
+                                        //give the user option to drill down 
+                                        Console.WriteLine("do you wish to continue? Y/N");
+                                        string paragoption = Console.ReadLine();
+                                        switch (paragoption)
+                                        {
+                                            case "Y":
+                                                //go to a loop to view stats within the file
+                                                drill(fileName);
+                                                break;     
+                                            case "N": break; //if not return to the first loop
+                                            default:
+                                                Console.WriteLine("Invalid option. Please try again.");
+                                                break;
+                                        }
+                                    }
+                                    //if not print warning and return to loop
+                                    else Console.WriteLine($"File '{fileName}' not found in the 'Files' table.");
+                                }
+                            }
+
                             break;
-                        case "3":
-                            stats();
-                            break;
-                        default:
-                            Console.WriteLine("Invalid option. Please try again.");
-                            break;
-                    }
+                        }
+                    //here you exit the loop
+                    case "2":
+                        return;
+                    default:
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
                 }
             }
         }
 
-            static void statsParagraphs(string fileName, int paranum)
+
+        static void drill(string fileName)
+        {
+            //you enter the second loop where you can drill down to see paragraph/line level
+            while (true)
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                Console.WriteLine("Choose an option:");
+                Console.WriteLine("1. Select a paragraph");
+                Console.WriteLine("2. select a sentence");
+                Console.WriteLine("3. go back");
+                string option = Console.ReadLine();
+                switch (option)
                 {
-                    connection.Open();
-                int words; int paragraph;
-                // Query to retrieve paragraph and counts information for the selected file
-                //query to sum the last word number in each sentence which is the max where the given paragraph nunmer and file
-                    string query = @"
-                SELECT SUM(LastWordInSentence.wordInLineNum) AS WordCountInParagraph
-                FROM Content AS LastWordInSentence
-                WHERE LastWordInSentence.paragNum = @ParagraphNumber
-                AND LastWordInSentence.file = @FileName
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM Content AS NextWordInSentence
-                    WHERE NextWordInSentence.paragNum = @ParagraphNumber
-                    AND NextWordInSentence.file = @FileName
-                    AND NextWordInSentence.lineNum = LastWordInSentence.lineNum
-                    AND NextWordInSentence.wordInLineNum > LastWordInSentence.wordInLineNum
-                )";
-
-                    using (SqlCommand command = new SqlCommand(query, connection))
-                    {
-                        command.Parameters.AddWithValue("@ParagraphNumber", paragraphNumber);
-                        command.Parameters.AddWithValue("@FileName", fileName);
-
-                        object result = command.ExecuteScalar();
-
-                        if (result != DBNull.Value)
+                    case "1":
+                        //sends to function that will print the paragraph stats
+                        Console.WriteLine("choose a paragaraph");
+                        int parag = Convert.ToInt32(Console.ReadLine());
+                        statsParagraphs(fileName, parag);
+                        break;
+                    case "2":
                         {
-                             Convert.ToInt32(result);
+                            //sends to function that will print the line stats
+                            Console.WriteLine("choose a line");
+                            int line = Convert.ToInt32(Console.ReadLine());
+                            statsline(fileName, line);
+                            //give the user option to drill down 
+                            Console.WriteLine("choose a word ? Y/N");
+                            string wordoption = Console.ReadLine();
+                            switch (wordoption)
+                            {
+                                case "Y":
+                                    {
+                                        Console.WriteLine("choose a word number in the sentence");
+                                        int word = Convert.ToInt32(Console.ReadLine());
+                                        //get the number of characters in the word 
+                                        using (SqlConnection connection = new SqlConnection(connectionString))
+                                        {
+                                            connection.Open();                                            //get charecter number
+                                            //query the charNum in the entry of the word/line/file combo
+                                            string wordquery = "SELECT charCount FROM Content WHERE wordInLineNum = @word AND lineNum = @lineNum AND  File = @fileName ";
+                                            using (SqlCommand wordcommand = new SqlCommand(wordquery, connection))
+                                            {
+                                                wordcommand.Parameters.AddWithValue("@word", word);
+                                                wordcommand.Parameters.AddWithValue("@lineNum", line);
+                                                wordcommand.Parameters.AddWithValue("@FileName", fileName);
+
+                                                SqlDataReader reader = wordcommand.ExecuteReader();
+                                                if (reader.Read())
+                                                {
+                                                    int chars = Convert.ToInt32(reader["charCount"]);
+                                                    Console.WriteLine($"Word number {word} has {chars} charecters");
+                                                }
+                                            }
+                                        }
+                                        break;
+                                    }
+                                case "N": break;
+                                default:
+                                    Console.WriteLine("Invalid option. Please try again.");
+                                    break;
+                            }
+                            break;
                         }
-                        else
-                        {
-                            return 0; // No words found in the specified paragraph
-                        }
-
-                    command.Parameters.AddWithValue("@fileName", fileName);
-
-                        SqlDataReader reader = command.ExecuteReader();
-                        while (reader.Read())
-                        {
-                            int paragraphNumber = Convert.ToInt32(reader["paragNum"]);
-                            int sentenceCount = Convert.ToInt32(reader["SentenceCount"]);
-                            int wordCount = Convert.ToInt32(reader["WordCount"]);
-
-                            Console.WriteLine($"File: {fileName}");
-                            Console.WriteLine($"Paragraph: {paragraphNumber}");
-                            Console.WriteLine($"Sentences: {sentenceCount}");
-                            Console.WriteLine($"Words: {wordCount}");
-                            Console.WriteLine();
-
-                            ViewLinesAndCounts(fileName, paragraphNumber);
-                        }
-                    }
+                    case "3": return;
+                    default:
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
                 }
             }
+        }
 
-            static void ViewLinesAndCounts(string fileName, int paragraphNumber)
+        // Query to retrieve paragraph stats for the selected file and given paragraoh number
+        static void statsParagraphs(string fileName, int num)
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                connection.Open();
+                int sentenceCounter=0; int wordCounter = 0;
+                //get sentence number
+                //count the unique line numbers in the given paragraph nunmer of the file
+                //or get the max line in paragraph to indicate how many line there is 
+                string linequery = "SELECT MAX(lineInParagNum) AS lineCount FROM Content WHERE paragNum = @num AND File = @fileName  ";
+                using (SqlCommand linecommand = new SqlCommand(linequery, connection))
                 {
-                    connection.Open();
+                    linecommand.Parameters.AddWithValue("@num", num);
+                    linecommand.Parameters.AddWithValue("@FileName", fileName);
 
-                    // Query to retrieve line and word counts for the selected file and paragraph
-                    string query = "SELECT lineInParagNum, COUNT(lineNum) AS LineCount, SUM(charoFwORDCount) AS WordCount " +
-                                   "FROM Content " +
-                                   "WHERE File = @fileName AND paragNum = @paragraphNumber " +
-                                   "GROUP BY lineInParagNum " +
-                                   "ORDER BY lineInParagNum";
-
-                    using (SqlCommand command = new SqlCommand(query, connection))
+                    SqlDataReader reader = linecommand.ExecuteReader();
+                    if (reader.Read())
                     {
-                        command.Parameters.AddWithValue("@fileName", fileName);
-                        command.Parameters.AddWithValue("@paragraphNumber", paragraphNumber);
+                        sentenceCounter = Convert.ToInt32(reader["lineCount"]);  
+                    }  
+                }
 
-                        SqlDataReader reader = command.ExecuteReader();
-                        while (reader.Read())
-                        {
-                            int lineInParagraph = Convert.ToInt32(reader["lineInParagNum"]);
-                            int lineCount = Convert.ToInt32(reader["LineCount"]);
-                            int wordCount = Convert.ToInt32(reader["WordCount"]);
+                //get word number
+                //query to sum the last word number in each sentence in the given paragraph nunmer of the file
+                string wordquery = "SELECT SUM(MaxWordInLineNum) AS wordCount" +
+                    "    FROM (SELECT MAX(wordInLineNum) AS MaxWordInLineNum" +
+                    "        FROM Content  WHERE paragNum = @num AND File = @fileName GROUP BY lineNum" +
+                    "    ) AS Subquery ";
+                using (SqlCommand wordcommand = new SqlCommand(wordquery, connection))
+                {
+                    wordcommand.Parameters.AddWithValue("@num", num);
+                    wordcommand.Parameters.AddWithValue("@FileName", fileName);
 
-                            Console.WriteLine($"Paragraph: {paragraphNumber}");
-                            Console.WriteLine($"Line in Paragraph: {lineInParagraph}");
-                            Console.WriteLine($"Lines: {lineCount}");
-                            Console.WriteLine($"Words: {wordCount}");
-                            Console.WriteLine();
-
-                            ViewWordsAndCounts(fileName, paragraphNumber, lineInParagraph);
-                        }
+                    SqlDataReader reader = wordcommand.ExecuteReader();
+                    if (reader.Read())
+                    {
+                        wordCounter = Convert.ToInt32(reader["wordCount"]);
                     }
                 }
+
+                //present
+                Console.WriteLine($"paragraph number is : {num}");
+                Console.WriteLine($"Sentences : {sentenceCounter}");
+                Console.WriteLine($"Words : {wordCounter}");
             }
-
-            static void ViewWordsAndCounts(string fileName, int paragraphNumber, int lineInParagraph)
+        }
+        // Query to retrieve line stats for the selected file and given line number
+        static void statsline(string fileName, int num)
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                connection.Open();
+                 int lineCounter = 0;                
+                //get word number
+                //query the last word number in the sentence in the given file
+                string wordquery = "SELECT MAX(wordInLineNum) AS LineCount FROM Content WHERE lineNum = @num AND File = @fileName ";
+                using (SqlCommand wordcommand = new SqlCommand(wordquery, connection))
                 {
-                    connection.Open();
+                    wordcommand.Parameters.AddWithValue("@num", num);
+                    wordcommand.Parameters.AddWithValue("@FileName", fileName);
 
-                    // Query to retrieve word and character counts for the selected file, paragraph, and line
-                    string query = "SELECT wordInLineNum, WordValue, charoFwORDCount " +
-                                   "FROM Content " +
-                                   "WHERE File = @fileName AND paragNum = @paragraphNumber AND lineInParagNum = @lineInParagraph " +
-                                   "ORDER BY wordInLineNum";
-
-                    using (SqlCommand command = new SqlCommand(query, connection))
+                    SqlDataReader reader = wordcommand.ExecuteReader();
+                    if (reader.Read())
                     {
-                        command.Parameters.AddWithValue("@fileName", fileName);
-                        command.Parameters.AddWithValue("@paragraphNumber", paragraphNumber);
-                        command.Parameters.AddWithValue("@lineInParagraph", lineInParagraph);
-
-                        SqlDataReader reader = command.ExecuteReader();
-                        while (reader.Read())
-                        {
-                            int wordInLine = Convert.ToInt32(reader["wordInLineNum"]);
-                            string wordValue = reader["WordValue"].ToString();
-                            int charCount = Convert.ToInt32(reader["charoFwORDCount"]);
-
-                            Console.WriteLine($"Word: {wordValue}");
-                            Console.WriteLine($"Paragraph: {paragraphNumber}");
-                            Console.WriteLine($"Line in Paragraph: {lineInParagraph}");
-                            Console.WriteLine($"Word in Line: {wordInLine}");
-                            Console.WriteLine($"Character Count: {charCount}");
-                            Console.WriteLine();
-                        }
+                        lineCounter = Convert.ToInt32(reader["LineCount"]);
                     }
                 }
+
+                //present
+                Console.WriteLine($"line  number is : {num}");
+                Console.WriteLine($"Words : {lineCounter}");
             }
-        
-                   
+        }
+
+
+        /// --------------------------------------------------------------------------------------------//
 
         static void ExecuteAprioriOnMetaData()
         {

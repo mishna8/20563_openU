@@ -24,7 +24,7 @@ namespace PROJcreate
                 {
                     connection.Open();
 
-                    // Check if entry exists in the files table
+                    // Check if entry exists in the master table
                     // BY USING A COUNT QUERY AND SEE IF THE NUMBER IS 0 OR 1 
                     string CheckQuery = $"SELECT COUNT(*) FROM {"sys.databases"} WHERE {"name"} = @name";
                     SqlCommand CheckCommand = new SqlCommand(CheckQuery, connection);
@@ -70,7 +70,7 @@ namespace PROJcreate
 
                     ///1.2
                     //create the METADATA id by file table
-                    //THE COLUMS:  FileName, Date,
+                    //THE COLUMS:  FileName, 
                     //Patient, Doctor, Diag, Treat, Summary as id numbers of the metadata found
                     string createMTDTableQuery = $"CREATE TABLE {"MetaData"} ({"FileName"} NVARCHAR(MAX), {"Patient"} NVARCHAR(MAX),{"Doctor"} NVARCHAR(MAX),{"Diag"} NVARCHAR(MAX),{"Treat"} NVARCHAR(MAX))";
                     SqlCommand createMTDTableCommand = new SqlCommand(createMTDTableQuery, connection);
@@ -79,7 +79,7 @@ namespace PROJcreate
                     Console.WriteLine("MetaData table created successfully!");
 
                     ///1.2.0
-                    //create the matadata values files 
+                    //create the matadata values table 
                     //columns: ID , value , type (Patient=1, Doctor=2, Diag=3, Treat=4)
                     string createMTDregTableQuery = $"CREATE TABLE {"MTDREG"} ({"ID"} INT, {"value"} NVARCHAR(MAX), {"type"} INT)";
                     SqlCommand createMTDregTableCommand = new SqlCommand(createMTDregTableQuery, connection);
@@ -125,9 +125,9 @@ namespace PROJcreate
 
         
 
-        //_______________________________________________________________________________________/
+        ///_______________________________________________________________________________________/
 
-        //this function will receive the desired database and a files directory to load files from to the table 
+        ///this function will receive the desired database and a files directory to load files from to the table 
         static void loadFiles(string databaseName, string directoryPath)
         {
             using (SqlConnection connection = new SqlConnection(connectionString))
@@ -137,6 +137,7 @@ namespace PROJcreate
                     connection.Open();
                     connection.ChangeDatabase(databaseName);
 
+                    //get a list of all txt files in the given directory
                     string[] fileEntries = Directory.GetFiles(directoryPath, "*.txt");
 
                     foreach (string filePath in fileEntries)
@@ -150,7 +151,7 @@ namespace PROJcreate
 
                         /*if the file doesnt exists we must 
                         1. create a file properties entry in file table 
-                        2. load all words in the content tavle
+                        2. load all words in the content table
                         3. load all new metadata in the metadata registery table 
                         4. create metadata mapping entry for the file in the metadata table 
                          */
@@ -158,6 +159,7 @@ namespace PROJcreate
                         {
                             // handle files properties instert
                             // start getting the properties 
+                            //name
                             string fileName = Path.GetFileName(filePath);
                             // get file stats  
                             int paragraphCount, lineCount, wordCount;
@@ -212,12 +214,12 @@ namespace PROJcreate
                     while (!reader.EndOfStream)
                     {
                         char c = (char)reader.Read();
-
+                        //if we have a new line break
                         if (c == '\n' || c == '\r')
                         {
                             inWord = false;
                             inParagraph = true;
-                            lineCount++;
+                            lineCount++; //count the new line 
                         }
                         else if (char.IsWhiteSpace(c))
                         {
@@ -225,15 +227,16 @@ namespace PROJcreate
                         }
                         else
                         {
+                            //we are between spaces
                             if (!inWord)
                             {
-                                wordCount++;
+                                wordCount++;//count the new word
                                 inWord = true;
                             }
-
+                            //we are not a space but also not a charecter, meanung between line break
                             if (inParagraph)
                             {
-                                paragraphCount++;
+                                paragraphCount++;//count the new paragraph 
                                 inParagraph = false;
                             }
                         }
@@ -246,7 +249,7 @@ namespace PROJcreate
             }
         }
 
-
+        //the function is called to read the words of the file and populate the other tables with its content 
         public static void wordInsert(string filePath)
         {
             // Initialize counters
