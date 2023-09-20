@@ -387,17 +387,24 @@ namespace PROJ
                     ///2.2
                     //create the Expression table
                     //THE COLUMS:  Sentence, ID
-                    string creatExprsTableQuery = $"CREATE TABLE {""} ({"Sentence"} NVARCHAR(MAX), {"ID"} INT)";
+                    string creatExprsTableQuery = $"CREATE TABLE {"Expression"} ({"Sentence"} NVARCHAR(MAX), {"ID"} INT)";
                     SqlCommand createExprsTableCommand = new SqlCommand(creatExprsTableQuery, connection);
                     createExprsTableCommand.ExecuteNonQuery();
 
                     Console.WriteLine("Expression table created successfully!");
 
+                    ///2.2.0
+                    //the expression location storage table 
+                    //THE COLUMNS: file , lineNum, wordNum, ID
+                    Console.WriteLine($"An error occurred: {ex.Message}");
+                    string creatExprslocationTableQuery = $"CREATE TABLE {"PhraseLocation"} ({"file"} NVARCHAR(MAX),{"lineNum"} INT,{"wordNum"} INT, {"ID"} INT)";
+                    SqlCommand createExprslocationTableCommand = new SqlCommand(creatExprslocationTableQuery, connection);
+                    createExprslocationTableCommand.ExecuteNonQuery();
+
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"An error occurred: {ex.Message}");
-
+                    Console.WriteLine("Expression table created successfully!");
                 }
             }
         }
@@ -1190,7 +1197,6 @@ namespace PROJ
             return resultList;
         }
 
-
         ///outputs the 3 sentences surrounding the given word
         static void view(string givenWord)
         {
@@ -1355,12 +1361,291 @@ namespace PROJ
 
         /// -------------------------------------------------------------------------------------------///
 
+        ///return a list of locations of the expression given 
+        static List<string> returnExpression(string expression)
+        {
+            List<string> exprsIndexes = new List<string>();
 
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
 
+                int ID = 0;//if not exists
 
-            /// --------------------------------------------------------------------------------------------//
+                //step 1: find the expression ID 
+                string GetID = $"SELECT ID FROM Expression WHERE Sentence = @Phrase";
+                using (SqlCommand IDcommand = new SqlCommand(GetID, connection))
+                {
+                    IDcommand.Parameters.AddWithValue("@Phrase", expression);
+                    var result = IDcommand.ExecuteScalar();
+                    if (result != DBNull.Value)
+                    {
+                        ID = Convert.ToInt32(result);
+                    }
+                }
 
-            static void ExecuteAprioriOnMetaData()
+                //if prase not found in the table , means will not be in the location table and needs to be search in the files
+                if (ID == 0)
+                {
+                    Console.WriteLine("expression was not found ");
+                    exprsIndexes = newExpression(expression);
+                }
+                //if prase exists return the locations
+                else
+                {
+                    // Query to search for records containing the specified word
+                    string query = $"SELECT File, lineNum, wordInLineNum, FROM PhraseLocation WHERE Exprs = @ID )";
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                command.Parameters.AddWithValue("@ID", ID);
+                                string File = reader["File"].ToString();
+                                int lineNum = int.Parse(reader["lineNum"].ToString());
+                                int wordInLineNum = int.Parse(reader["wordInLineNum"].ToString());
+
+                                string wordWithIndex = $" File: {File}, File Line: {lineNum}, word Index: {wordInLineNum}";
+                                exprsIndexes.Add(wordWithIndex);
+                            }
+                        }
+                    }
+                }
+            }
+            return exprsIndexes;
+        }
+
+        //searches for the expressions accross the files in the 
+        static List<string> newExpression(string expression)
+        {
+            //every string in this list looks like this: File: {File}, File Line: {lineNum}, word Index: {wordInLineNum}
+            List<string> exprsIndexes = new List<string>();
+            // Split the phrase into words
+            string[] words = expression.Split(' ');
+            //get the first word 
+            string exprWord = words.FirstOrDefault();
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                //find the properties of the first word that 
+                string file;
+                int firstlineNum, firstWordNum;
+
+                //find in the content table of all words possible points that can continue to the phrase 
+                string query = $"SELECT File, lineNum, wordInLineNum FROM Content WHERE WordValue=@first";
+                using (SqlCommand command = new SqlCommand(query, connection))
+                {
+                    command.Parameters.AddWithValue("@first", exprWord);
+
+                    using (SqlDataReader reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            file = reader["File"].ToString();
+                            firstlineNum = int.Parse(reader["lineNum"].ToString());
+                            firstWordNum = int.Parse(reader["wordInLineNum"].ToString());
+
+                            //for each possible point check if its the expression and return the list of IDs
+                            bool found;
+                            found = matchCheck(words, file, firstlineNum, firstWordNum);
+                            //if it is then add the properties, if not skip
+                            if (found)
+                            {
+                                //1/ add the properties to the list that wil retuen to the user for the current request
+                                string exprsIndex = $" File: {file}, File Line: {firstlineNum}, word Index: {firstWordNum}";
+                                exprsIndexes.Add(exprsIndex);
+                                //2/ add the properties to the expression table for future requests 
+                                addExpression(expression, file, firstlineNum, firstWordNum);
+                            }
+
+                        }
+                    }
+                }
+                return exprsIndexes;
+            }
+        }
+
+        public void addExpression(string expression, string file, int firstlineNum, int firstWordNum)
+        {
+            //first step: add or get the expression id from the expression table
+            int id = exprsID(expression);
+            //second step: add the properties to the locations tagble
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                string insertQuery = $"INSERT INTO PhraseLocation (ID, File, lineNum, wordInLineNum) VALUES (@id, @file, @lineNum, @WordNum)";
+                using (SqlCommand insertCommand = new SqlCommand(insertQuery, connection))
+                {
+                    insertCommand.Parameters.AddWithValue("@id", id);
+                    insertCommand.Parameters.AddWithValue("@file", file);
+                    insertCommand.Parameters.AddWithValue("@firstlineNum", firstlineNum);
+                    insertCommand.Parameters.AddWithValue("@WordNum", firstWordNum)
+        
+            insertCommand.ExecuteNonQuery();
+                }
+            }
+        }
+        static int exprsID(string expression)
+        {
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+                int ID = 0;
+
+                string GetID = $"SELECT ID FROM Expression WHERE Sentence = @Phrase";
+                using (SqlCommand IDcommand = new SqlCommand(GetID, connection))
+                {
+                    IDcommand.Parameters.AddWithValue("@Phrase", expression);
+                    var result = IDcommand.ExecuteScalar();
+                    if (result != DBNull.Value)
+                    {
+                        ID = Convert.ToInt32(result);
+                    }
+                }
+
+                //if prase not found in the table , create it to find it and look for it again
+                if (ID == 0)
+                {
+
+                    int MaxID = 0;// If the table is empty, return 1 as the starting ID  
+                                  //if the table is not empty get the last ID 
+                    string GetMaxID = $"SELECT MAX(ID) FROM Expression";
+                    using (SqlCommand IDcommand = new SqlCommand(GetMaxID, connection))
+                    {
+                        var result = IDcommand.ExecuteScalar();
+                        if (result != DBNull.Value)
+                        {
+                            MaxID = Convert.ToInt32(result);
+                        }
+                    }
+                    //prep the new ID 
+                    ID = MaxID + 1;
+
+                    //insert the new expression with the new ID 
+                    string insertQuery = $"INSERT INTO Expression (Sentence,ID) VALUES (@Expression, @ID);";
+                    using (SqlCommand command = new SqlCommand(insertQuery, connection))
+                    {
+                        command.Parameters.AddWithValue("@Expression", expression);
+                        command.Parameters.AddWithValue("@ID", ID);
+
+                        command.ExecuteNonQuery();
+                    }
+                    Console.WriteLine($"Value '{expression}' inserted with ID '{ID}'.");
+                }
+                return ID;
+            }
+        }
+
+        //get a expression and a starting point in the table , get each next word and compare
+        public bool matchCheck(List<string> expression, string file, int firstlineNum, int firstWordNum)
+        {
+            //set the current table word index
+            int currWordInLineNum = firstlineNum;
+            int currLineNum = firstWordNum;
+
+            //for the length of the expression, starting from the second word as we entered the loop from the first word match
+            for (int i = 0; i < expression.Length; i++)
+            {
+                //get the expression word
+                string expWord = expression[i];
+                //get the table word 
+                string nextWord;
+                //option one: the word is the next in the same sentence
+                int nextWordInLine = currWordInLineNum + 1;
+                int nextLineNum = currLineNum;
+
+                using (SqlConnection connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+
+                    string query = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = @nextWordInLine)";
+
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@file", file);
+                        command.Parameters.AddWithValue("@nextLineNum", nextLineNum);
+                        command.Parameters.AddWithValue("@nextWordInLine", nextWordInLine);
+
+                        using (SqlDataReader reader = command.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                string nextWord = reader.GetString(0);
+                            }
+                        }
+                    }
+                }
+
+                // If no word was found in the same line then look for the first word in the next line, 
+                if (nextWord)
+                {
+                    // increment currLineNum and WordInLineNum = 0 
+                    nextLineNum = currLineNum + 1;
+                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    {
+                        connection.Open();
+
+                        string queryNextLine = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = 0)";
+
+                        using (SqlCommand commandNextLine = new SqlCommand(queryNextLine, connection))
+                        {
+                            commandNextLine.Parameters.AddWithValue("@file", file);
+                            commandNextLine.Parameters.AddWithValue("@nextLineNum", nextLineNum);
+
+                            using (SqlDataReader readerNextLine = commandNextLine.ExecuteReader())
+                            {
+                                if (readerNextLine.Read())
+                                {
+                                    string nextWord = readerNextLine.GetString(0);
+                                }
+                            }
+                        }
+                    }
+                }
+                //if they mismatch (or a next word was not found), break and return false 
+                if (expWord != nextWord) return false;
+
+                //set for the next word
+                currWordInLineNum = nextWordInLine;
+                currLineNum = nextLineNum;
+            }
+            //if we finished the loop passing all the expression word and didnt break
+            return true;
+        }
+
+        //when a new file is added the old expressions that exissts needs to update 
+        //use the newExpression function on a partial view of the content table ,
+        //for each file from the new wordId look for existing expressions
+        static List<string> updateExpression(string expression)
+        {
+            //get all the expressions in the expressions table  
+            string query = $"SELECT Sentence FROM Expression ";
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                using (SqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        //get the expression string 
+                        string expression = reader["Sentence"].ToString();
+
+                        //for each expression add new location from the file that was just added
+                        newExpression(expression)
+        
+            }
+                }
+            }
+
+        }
+
+        /// --------------------------------------------------------------------------------------------//
+
+        static void ExecuteAprioriOnMetaData()
         {
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
@@ -1480,8 +1765,6 @@ namespace PROJ
 
             return (double)ruleCount / antecedentCount;
         }
-
-
 
     }
 }
