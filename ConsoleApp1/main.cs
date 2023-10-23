@@ -1,24 +1,29 @@
 
-using System;
-using System.Data.SqlClient;
+//using System;
+//using System.Data.SqlClient;
 using Microsoft.Data.SqlClient;
-using System.IO;
-using System.Linq.Expressions;
+using System.Security.Principal;
+//using System.IO;
+//using System.Linq.Expressions;
 using System.Text.RegularExpressions;
-using System.Transactions;
-using System.Xml.Linq;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
+//using System.Transactions;
+//using System.Xml.Linq;
+//using System.Collections.Generic;
+//using System.Linq;
+//using System.Runtime.InteropServices;
 
 
 namespace PROJ
 {
-    class program
+    class Program
     {
         //global variables:
+        //server name
         public static string serverName = System.Environment.MachineName;
-        public static string connectionString = $"Server={serverName};Integrated Security=True;";
+        //local user
+        public static WindowsIdentity currentUserIdentity = WindowsIdentity.GetCurrent();
+        public static string connectionString = $"Server={serverName},1433;Integrated Security=True;TrustServerCertificate=True;";
+
 
         //this is the user interface it will guide the user to all the commands to see all the functionallity of the system 
         static void Main(string[] args)
@@ -27,6 +32,8 @@ namespace PROJ
             //when setting up the user gives the DB name to allow multiple setups 
 
             Console.WriteLine("welcom ");
+            Console.WriteLine($"sql server is: {serverName}");
+            Console.WriteLine($"Current User is: {currentUserIdentity.Name}");
             while (true)
             {
                 Console.WriteLine("Enter a commands: [start, load, stats, search, view, data mine,  exit ] ");
@@ -43,7 +50,7 @@ namespace PROJ
                                 if (!string.IsNullOrEmpty(DBNAME))
                                 {
                                     //will call the function only if the chosen name is approved 
-                                    if (!DatabaseExists(DBNAME)) Setup(DBNAME);
+                                    if (!DatabaseExists(DBNAME)) Setup(DBNAME); 
                                     else Console.WriteLine("database exists, try again");
                                 }
                                 else Console.WriteLine("Invalid input. Please provide a non-empty database name.");
@@ -61,8 +68,14 @@ namespace PROJ
                                 if (!string.IsNullOrEmpty(DBNAME) && !string.IsNullOrEmpty(DirPath))
                                 {
                                     //will call the function only if the chosen database exists to be used 
-                                    if (DatabaseExists(DBNAME)) loadFiles(DBNAME, DirPath);
+                                    if (DatabaseExists(DBNAME)) 
+                                    { 
+                                        loadFiles(DBNAME, DirPath); 
+                                        //updateExpression(); 
+                                    }
                                     else Console.WriteLine("database doesnt exists, please enter 'start'");
+                                    //after the new words have been added need to update the locations of saved expressions in the new file
+                                    
                                 }
                                 else Console.WriteLine("Invalid input. Please provide a non-empty directory or database name.");
 
@@ -216,7 +229,7 @@ namespace PROJ
                                                     //get the result list
                                                     //the list here is the index list of the starting point of the expression
                                                     //this function will handle the creation of new expressions as well
-                                                    printlist = SearchExpression(exprs);
+                                                    printlist = returnExpression(exprs);
                                                     print(printlist);
                                                 }
                                                 else Console.WriteLine("Invalid input. Please provide a non-empty parameters ");
@@ -341,7 +354,7 @@ namespace PROJ
                     ///1.1
                     //create the FILES table
                     //THE COLUMS:  FileName, FilePath, WordCount, LineCount, ParagCount
-                    string createFilesTableQuery = $"CREATE TABLE {"Files"} ({"FileName"} NVARCHAR(MAX), {"FilePath"} NVARCHAR(MAX), {"WordCount"} INT, {"LineCount"} INT, {"ParagCount"} INT)";
+                    string createFilesTableQuery = "CREATE TABLE [Files] ([FileName] NVARCHAR(MAX), [FilePath] NVARCHAR(MAX), [WordCount] INT, [LineCount] INT, [ParagCount] INT)";
                     SqlCommand createFilesTableCommand = new SqlCommand(createFilesTableQuery, connection);
                     createFilesTableCommand.ExecuteNonQuery();
 
@@ -351,7 +364,7 @@ namespace PROJ
                     //create the METADATA id by file table
                     //THE COLUMS:  FileName, 
                     //Patient, Doctor, Diag, Treat, Summary as id numbers of the metadata found
-                    string createMTDTableQuery = $"CREATE TABLE {"MetaData"} ({"FileName"} NVARCHAR(MAX), {"Patient"} NVARCHAR(MAX),{"Doctor"} NVARCHAR(MAX),{"Diag"} NVARCHAR(MAX),{"Treat"} NVARCHAR(MAX))";
+                    string createMTDTableQuery = "CREATE TABLE [MetaData] ([FileName] NVARCHAR(MAX), [Patient] NVARCHAR(MAX), [Doctor] NVARCHAR(MAX), [Diag] NVARCHAR(MAX), [Treat] NVARCHAR(MAX))";
                     SqlCommand createMTDTableCommand = new SqlCommand(createMTDTableQuery, connection);
                     createMTDTableCommand.ExecuteNonQuery();
 
@@ -360,17 +373,17 @@ namespace PROJ
                     ///1.2.0
                     //create the matadata values table 
                     //columns: ID , value , type (Patient=1, Doctor=2, Diag=3, Treat=4)
-                    string createMTDregTableQuery = $"CREATE TABLE {"MTDREG"} ({"ID"} INT, {"value"} NVARCHAR(MAX), {"type"} INT)";
+                    string createMTDregTableQuery = "CREATE TABLE [MTDREG] ([ID] INT, [value] NVARCHAR(MAX), [type] INT)";
                     SqlCommand createMTDregTableCommand = new SqlCommand(createMTDregTableQuery, connection);
                     createMTDregTableCommand.ExecuteNonQuery();
 
-                    Console.WriteLine("MetaData table created successfully!");
+                    Console.WriteLine("MetaData Values table created successfully!");
 
                     ///1.3
                     //create the Content table
                     //THE COLUMS:  WordId,WordValue, File, charCount, paragNum , lineInParagNum, lineNum, charInLineNum, wordInLineNum, Exprs
-                    string creatWORDTableQuery = $"CREATE TABLE {"Content"} ({"WordId"} INT, {"WordValue"} NVARCHAR(MAX), {"File"} NVARCHAR(MAX),{"charCount"} INT, {"paragNum"} INT, {"lineInParagNum"} INT,{"lineNum"} INT, {"charInLineNum"} INT, {"wordInLineNum"} INT,{"Exprs"} INT)";
-                    SqlCommand createWORDTableCommand = new SqlCommand(creatWORDTableQuery, connection);
+                    string createWORDTableQuery = $"CREATE TABLE [Content] ([WordId] INT, [WordValue] NVARCHAR(MAX), [File] NVARCHAR(MAX), [charCount] INT, [paragNum] INT, [lineInParagNum] INT, [lineNum] INT, [charInLineNum] INT, [wordInLineNum] INT)";
+                    SqlCommand createWORDTableCommand = new SqlCommand(createWORDTableQuery, connection);
                     createWORDTableCommand.ExecuteNonQuery();
 
                     Console.WriteLine("Content table created successfully!");
@@ -378,7 +391,7 @@ namespace PROJ
                     ///2.1
                     //create the Tags table
                     //THE COLUMS:  Group, Word
-                    string creatTAGTableQuery = $"CREATE TABLE {"Tags"} ({"Group"} NVARCHAR(MAX), {"Word"} NVARCHAR(MAX))";
+                    string creatTAGTableQuery = "CREATE TABLE [Tags] ([Group] NVARCHAR(MAX), [Word] NVARCHAR(MAX))";
                     SqlCommand createTAGTableCommand = new SqlCommand(creatTAGTableQuery, connection);
                     createTAGTableCommand.ExecuteNonQuery();
 
@@ -387,7 +400,7 @@ namespace PROJ
                     ///2.2
                     //create the Expression table
                     //THE COLUMS:  Sentence, ID
-                    string creatExprsTableQuery = $"CREATE TABLE {"Expression"} ({"Sentence"} NVARCHAR(MAX), {"ID"} INT)";
+                    string creatExprsTableQuery = "CREATE TABLE [Expression] ([Sentence] NVARCHAR(MAX), [ID] INT)";
                     SqlCommand createExprsTableCommand = new SqlCommand(creatExprsTableQuery, connection);
                     createExprsTableCommand.ExecuteNonQuery();
 
@@ -395,16 +408,16 @@ namespace PROJ
 
                     ///2.2.0
                     //the expression location storage table 
-                    //THE COLUMNS: file , lineNum, wordNum, ID
-                    Console.WriteLine($"An error occurred: {ex.Message}");
-                    string creatExprslocationTableQuery = $"CREATE TABLE {"PhraseLocation"} ({"file"} NVARCHAR(MAX),{"lineNum"} INT,{"wordNum"} INT, {"ID"} INT)";
+                    //THE COLUMNS: file , lineNum, wordNum, ID                  
+                    string creatExprslocationTableQuery = "CREATE TABLE [PhraseLocation] ([file] NVARCHAR(MAX), [lineNum] INT, [wordNum] INT, [ID] INT)";
                     SqlCommand createExprslocationTableCommand = new SqlCommand(creatExprslocationTableQuery, connection);
                     createExprslocationTableCommand.ExecuteNonQuery();
 
+                    Console.WriteLine("Expression location table created successfully!");
                 }
                 catch (Exception ex)
-                {
-                    Console.WriteLine("Expression table created successfully!");
+                {                    
+                    Console.WriteLine($"An error occurred: {ex.Message}");
                 }
             }
         }
@@ -414,6 +427,7 @@ namespace PROJ
         ///_______________________________________________________________________________________/
 
         ///this function will receive the desired database and a files directory to load files from to the table 
+        //my test envoironment : C:\Users\me\source\test
         static void loadFiles(string databaseName, string directoryPath)
         {
             using (SqlConnection connection = new SqlConnection(connectionString))
@@ -422,6 +436,8 @@ namespace PROJ
                 {
                     connection.Open();
                     connection.ChangeDatabase(databaseName);
+
+                    Console.WriteLine("starting....");
 
                     //get a list of all txt files in the given directory
                     string[] fileEntries = Directory.GetFiles(directoryPath, "*.txt");
@@ -445,30 +461,32 @@ namespace PROJ
                         {
                             // handle files properties instert
                             // start getting the properties 
+                            Console.WriteLine("adding the file....");
+
                             //name
                             string fileName = Path.GetFileName(filePath);
                             // get file stats  
                             int paragraphCount, lineCount, wordCount;
                             CountFileStats(filePath, out paragraphCount, out lineCount, out wordCount);
                             // the query 
-                            string insertFileQuery = $"INSERT INTO Files (FileName, FilePath, WordNum, LineNume, ParagNum )" +
-                                                      $"VALUES (@fileName, @filePath, @paragraphCount, @lineCount, @wordCount)";
+                            string insertFileQuery = $"INSERT INTO Files (FileName, FilePath, WordCount, LineCount, ParagCount )" +
+                                                      $"VALUES (@fileName, @filePath, @wordCount, @lineCount, @paragraphCount)";
                             using (SqlCommand insertFileCommand = new SqlCommand(insertFileQuery, connection))
                             {
-                                insertFileCommand.Parameters.AddWithValue("@Path", filePath);
                                 insertFileCommand.Parameters.AddWithValue("@fileName", fileName);
-                                insertFileCommand.Parameters.AddWithValue("@paragraphCount", paragraphCount);
-                                insertFileCommand.Parameters.AddWithValue("@lineCount", lineCount);
+                                insertFileCommand.Parameters.AddWithValue("@filePath", filePath);
                                 insertFileCommand.Parameters.AddWithValue("@wordCount", wordCount);
+                                insertFileCommand.Parameters.AddWithValue("@lineCount", lineCount);
+                                insertFileCommand.Parameters.AddWithValue("@paragraphCount", paragraphCount);                 
                                 insertFileCommand.ExecuteNonQuery();
                             }
 
                             //handle metadata mapping entry for the file 
-                            string insertMTDQuery = $"INSERT INTO Files (FileName, Patient, Doctor ,Diag ,Treat )" +
+                            string insertMTDQuery = $"INSERT INTO MetaData (FileName, Patient, Doctor ,Diag ,Treat )" +
                                                       $"VALUES (@fileName, 0,0,0,0)";
                             using (SqlCommand insertMTDCommand = new SqlCommand(insertMTDQuery, connection))
                             {
-                                insertMTDCommand.Parameters.AddWithValue("@fileName", filePath);
+                                insertMTDCommand.Parameters.AddWithValue("@fileName", fileName);
                                 insertMTDCommand.ExecuteNonQuery();
                             }
                             //handle the word and metadata inserts & mapping
@@ -488,56 +506,17 @@ namespace PROJ
         //reads the file to extract overall stats for the files table
         static void CountFileStats(string filePath, out int paragraphCount, out int lineCount, out int wordCount)
         {
-            paragraphCount = lineCount = wordCount = 0;
+            string content = File.ReadAllText(filePath);
 
-            try
-            {
-                using (StreamReader reader = new StreamReader(filePath))
-                {
-                    bool inParagraph = false;
-                    bool inWord = false;
-
-                    while (!reader.EndOfStream)
-                    {
-                        char c = (char)reader.Read();
-                        //if we have a new line break
-                        if (c == '\n' || c == '\r')
-                        {
-                            inWord = false;
-                            inParagraph = true;
-                            lineCount++; //count the new line 
-                        }
-                        else if (char.IsWhiteSpace(c))
-                        {
-                            inWord = false;
-                        }
-                        else
-                        {
-                            //we are between spaces
-                            if (!inWord)
-                            {
-                                wordCount++;//count the new word
-                                inWord = true;
-                            }
-                            //we are not a space but also not a charecter, meanung between line break
-                            if (inParagraph)
-                            {
-                                paragraphCount++;//count the new paragraph 
-                                inParagraph = false;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error reading the file: " + ex.Message);
-            }
+            paragraphCount = Regex.Split(content, @"\r\n\r\n|\n\n").Length;
+            lineCount = content.Split('\n').Length;
+            wordCount = content.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
         }
 
         //the function is called to read the words of the file and populate the other tables with its content 
         public static void wordInsert(string filePath)
         {
+            Console.WriteLine("reading the words....");
             // Initialize counters
             int paragNum = 0;
             int lineNum = 0;
@@ -576,7 +555,7 @@ namespace PROJ
                     }
 
                     // Split the line into words
-                    string[] words = wordRegex.Matches(line.ToLower());
+                    string[] words = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                     foreach (string word in words)
                     {
                         //get the word's charecter number (length)
@@ -619,14 +598,17 @@ namespace PROJ
             {
                 // Open the connection
                 connection.Open();
-
+                Console.WriteLine("inserting the words....");
+                int num = 1;
                 // Define your SQL query to insert data into the "content" table
-                string insertQuery = "INSERT INTO content (WordValue, File, charCount, paragNum, lineInParagNum, lineNum, charInLineNum, wordInLineNum, Exprs) " +
-                    "VALUES (@WordValue, @File, @charCount, @paragNum, @lineInParagNum, @lineNum, @charInLineNum, @wordInLineNum, 0)";
-
+                string insertQuery = $"INSERT INTO Content (WordId, WordValue, [File], charCount, paragNum, lineInParagNum, lineNum, charInLineNum, wordInLineNum ) " +
+                    $"VALUES (@WordId, @WordValue, @File, @charCount, @paragNum, @lineInParagNum, @lineNum, @charInLineNum, @wordInLineNum)";
+                //string insertFileQuery = $"INSERT INTO Files (FileName, FilePath, WordCount, LineCount, ParagCount )" +
+                  //                                    $"VALUES (@fileName, @filePath, @wordCount, @lineCount, @paragraphCount)";
                 using (SqlCommand command = new SqlCommand(insertQuery, connection))
                 {
                     // Set parameter values
+                    command.Parameters.AddWithValue("@WordId", num);
                     command.Parameters.AddWithValue("@WordValue", word);
                     command.Parameters.AddWithValue("@File", filePath);
                     command.Parameters.AddWithValue("@charCount", charInWordNum);
@@ -649,6 +631,7 @@ namespace PROJ
         //this function inserts the id of the metadata it got to the correct column in the table
         public static void MTDHandler(string word, int number, string fileName)
         {
+            Console.WriteLine("reading special chaaracters....");
             // Get the WordId using the GetOrCreateEntryId function
             int wordId = GetOrCreateEntryId(word, number);
 
@@ -701,7 +684,7 @@ namespace PROJ
             {
                 // Open the connection
                 connection.Open();
-
+                Console.WriteLine("here1....");
                 // Create a SqlCommand to check if the combination exists
                 string checkQuery = "SELECT id FROM MTDREG WHERE value = @word AND type = @number";
                 using (SqlCommand checkCommand = new SqlCommand(checkQuery, connection))
@@ -723,6 +706,7 @@ namespace PROJ
                 // If entryId is still -1, it means the combination doesn't exist, so we insert a new entry
                 if (entryId == -1)
                 {
+                    Console.WriteLine("here2....");
                     string insertQuery = "INSERT INTO MTDREG (value, type) VALUES (@word, @number); SELECT SCOPE_IDENTITY();";
                     using (SqlCommand insertCommand = new SqlCommand(insertQuery, connection))
                     {
@@ -1423,7 +1407,7 @@ namespace PROJ
             //every string in this list looks like this: File: {File}, File Line: {lineNum}, word Index: {wordInLineNum}
             List<string> exprsIndexes = new List<string>();
             // Split the phrase into words
-            string[] words = expression.Split(' ');
+            string[] words = expression.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             //get the first word 
             string exprWord = words.FirstOrDefault();
 
@@ -1432,8 +1416,8 @@ namespace PROJ
                 connection.Open();
 
                 //find the properties of the first word that 
-                string file;
-                int firstlineNum, firstWordNum;
+                string file="";
+                int firstlineNum = 0; int firstWordNum=0;
 
                 //find in the content table of all words possible points that can continue to the phrase 
                 string query = $"SELECT File, lineNum, wordInLineNum FROM Content WHERE WordValue=@first";
@@ -1469,7 +1453,7 @@ namespace PROJ
             }
         }
 
-        public void addExpression(string expression, string file, int firstlineNum, int firstWordNum)
+        static public void addExpression(string expression, string file, int firstlineNum, int firstWordNum)
         {
             //first step: add or get the expression id from the expression table
             int id = exprsID(expression);
@@ -1484,7 +1468,7 @@ namespace PROJ
                     insertCommand.Parameters.AddWithValue("@id", id);
                     insertCommand.Parameters.AddWithValue("@file", file);
                     insertCommand.Parameters.AddWithValue("@firstlineNum", firstlineNum);
-                    insertCommand.Parameters.AddWithValue("@WordNum", firstWordNum)
+                    insertCommand.Parameters.AddWithValue("@WordNum", firstWordNum);
         
             insertCommand.ExecuteNonQuery();
                 }
@@ -1542,7 +1526,7 @@ namespace PROJ
         }
 
         //get a expression and a starting point in the table , get each next word and compare
-        public bool matchCheck(List<string> expression, string file, int firstlineNum, int firstWordNum)
+        static public bool matchCheck(string[] expression, string file, int firstlineNum, int firstWordNum)
         {
             //set the current table word index
             int currWordInLineNum = firstlineNum;
@@ -1554,7 +1538,7 @@ namespace PROJ
                 //get the expression word
                 string expWord = expression[i];
                 //get the table word 
-                string nextWord;
+                string nextWord = null;
                 //option one: the word is the next in the same sentence
                 int nextWordInLine = currWordInLineNum + 1;
                 int nextLineNum = currLineNum;
@@ -1575,14 +1559,14 @@ namespace PROJ
                         {
                             if (reader.Read())
                             {
-                                string nextWord = reader.GetString(0);
+                                nextWord = reader.GetString(0);
                             }
                         }
                     }
                 }
 
                 // If no word was found in the same line then look for the first word in the next line, 
-                if (nextWord)
+                if (!string.IsNullOrEmpty(nextWord))
                 {
                     // increment currLineNum and WordInLineNum = 0 
                     nextLineNum = currLineNum + 1;
@@ -1601,7 +1585,7 @@ namespace PROJ
                             {
                                 if (readerNextLine.Read())
                                 {
-                                    string nextWord = readerNextLine.GetString(0);
+                                    nextWord = readerNextLine.GetString(0);
                                 }
                             }
                         }
@@ -1621,23 +1605,27 @@ namespace PROJ
         //when a new file is added the old expressions that exissts needs to update 
         //use the newExpression function on a partial view of the content table ,
         //for each file from the new wordId look for existing expressions
-        static List<string> updateExpression(string expression)
+        static void updateExpression()
         {
-            //get all the expressions in the expressions table  
-            string query = $"SELECT Sentence FROM Expression ";
-            using (SqlCommand command = new SqlCommand(query, connection))
+            using (SqlConnection connection = new SqlConnection(connectionString))
             {
-                using (SqlDataReader reader = command.ExecuteReader())
+                connection.Open();
+                //get all the expressions in the expressions table  
+                string query = $"SELECT Sentence FROM Expression ";
+                using (SqlCommand command = new SqlCommand(query, connection))
                 {
-                    while (reader.Read())
+                    using (SqlDataReader reader = command.ExecuteReader())
                     {
-                        //get the expression string 
-                        string expression = reader["Sentence"].ToString();
+                        while (reader.Read())
+                        {
+                            //get the expression string 
+                            string expr = reader["Sentence"].ToString();
 
-                        //for each expression add new location from the file that was just added
-                        newExpression(expression)
-        
-            }
+                            //for each expression add new location from the file that was just added
+                            newExpression(expr);
+
+                        }
+                    }
                 }
             }
 
