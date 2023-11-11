@@ -2,6 +2,7 @@
 //using System;
 //using System.Data.SqlClient;
 using Microsoft.Data.SqlClient;
+using System;
 using System.Security.Principal;
 //using System.IO;
 //using System.Linq.Expressions;
@@ -20,20 +21,17 @@ namespace PROJ
         //global variables:
         //server name
         public static string serverName = System.Environment.MachineName;
-        //local user
-        public static WindowsIdentity currentUserIdentity = WindowsIdentity.GetCurrent();
         public static string connectionString = $"Server={serverName},1433;Integrated Security=True;TrustServerCertificate=True;";
 
 
         //this is the user interface it will guide the user to all the commands to see all the functionallity of the system 
         static void Main(string[] args)
         {
-            string DBNAME = "MYDB";
+            string DBNAME;
             //when setting up the user gives the DB name to allow multiple setups 
 
             Console.WriteLine("welcom ");
             Console.WriteLine($"sql server is: {serverName}");
-            Console.WriteLine($"Current User is: {currentUserIdentity.Name}");
             while (true)
             {
                 Console.WriteLine("Enter a commands: [start, load, stats, search, view, data mine,  exit ] ");
@@ -70,12 +68,9 @@ namespace PROJ
                                     //will call the function only if the chosen database exists to be used 
                                     if (DatabaseExists(DBNAME)) 
                                     { 
-                                        loadFiles(DBNAME, DirPath); 
-                                        //updateExpression(); 
+                                        loadFiles(DBNAME, DirPath);                                     
                                     }
-                                    else Console.WriteLine("database doesnt exists, please enter 'start'");
-                                    //after the new words have been added need to update the locations of saved expressions in the new file
-                                    
+                                    else Console.WriteLine("database doesnt exists, please enter 'start'");         
                                 }
                                 else Console.WriteLine("Invalid input. Please provide a non-empty directory or database name.");
 
@@ -125,7 +120,7 @@ namespace PROJ
                                                         case "metadata":
                                                             {
                                                                 // Get user input 
-                                                                Console.WriteLine("Enter a metadata type number:[Patient=1,Doctor=2,Diagnosis=3,Treatment=4]");
+                                                                Console.WriteLine("Enter a metadata type number:[any=0,Patient=1,Doctor=2,Diagnosis=3,Treatment=4]");
                                                                 string MTD =  Console.ReadLine();
                                                                 Console.WriteLine("Enter a word:");
                                                                 string word = Console.ReadLine();
@@ -351,7 +346,7 @@ namespace PROJ
 
                     connection.ChangeDatabase(databaseName);
 
-                    ///1.1
+                    ///1
                     //create the FILES table
                     //THE COLUMS:  FileName, FilePath, WordCount, LineCount, ParagCount
                     string createFilesTableQuery = "CREATE TABLE [Files] ([FileName] NVARCHAR(MAX), [FilePath] NVARCHAR(MAX), [WordCount] INT, [LineCount] INT, [ParagCount] INT)";
@@ -360,26 +355,26 @@ namespace PROJ
 
                     Console.WriteLine("Files table created successfully!");
 
-                    ///1.2
+                    ///2
                     //create the METADATA id by file table
                     //THE COLUMS:  FileName, 
-                    //Patient, Doctor, Diag, Treat, Summary as id numbers of the metadata found
+                    //Patient, Doctor, Diag, Treat as id numbers of the metadata found
                     string createMTDTableQuery = "CREATE TABLE [MetaData] ([FileName] NVARCHAR(MAX), [Patient] NVARCHAR(MAX), [Doctor] NVARCHAR(MAX), [Diag] NVARCHAR(MAX), [Treat] NVARCHAR(MAX))";
                     SqlCommand createMTDTableCommand = new SqlCommand(createMTDTableQuery, connection);
                     createMTDTableCommand.ExecuteNonQuery();
 
                     Console.WriteLine("MetaData table created successfully!");
 
-                    ///1.2.0
+                    ///3
                     //create the matadata values table 
-                    //columns: ID , value , type (Patient=1, Doctor=2, Diag=3, Treat=4)
-                    string createMTDregTableQuery = "CREATE TABLE [MTDREG] ([ID] INT, [value] NVARCHAR(MAX), [type] INT)";
+                    //columns: ID , value 
+                    string createMTDregTableQuery = "CREATE TABLE [MTDREG] ([ID] INT, [value] NVARCHAR(MAX))";
                     SqlCommand createMTDregTableCommand = new SqlCommand(createMTDregTableQuery, connection);
                     createMTDregTableCommand.ExecuteNonQuery();
 
                     Console.WriteLine("MetaData Values table created successfully!");
 
-                    ///1.3
+                    ///4
                     //create the Content table
                     //THE COLUMS:  WordId,WordValue, File, charCount, paragNum , lineInParagNum, lineNum, charInLineNum, wordInLineNum, Exprs
                     string createWORDTableQuery = $"CREATE TABLE [Content] ([WordId] INT, [WordValue] NVARCHAR(MAX), [File] NVARCHAR(MAX), [charCount] INT, [paragNum] INT, [lineInParagNum] INT, [lineNum] INT, [charInLineNum] INT, [wordInLineNum] INT)";
@@ -388,7 +383,7 @@ namespace PROJ
 
                     Console.WriteLine("Content table created successfully!");
 
-                    ///2.1
+                    ///5
                     //create the Tags table
                     //THE COLUMS:  Group, Word
                     string creatTAGTableQuery = "CREATE TABLE [Tags] ([Group] NVARCHAR(MAX), [Word] NVARCHAR(MAX))";
@@ -397,7 +392,7 @@ namespace PROJ
 
                     Console.WriteLine("Tags table created successfully!");
 
-                    ///2.2
+                    ///6
                     //create the Expression table
                     //THE COLUMS:  Sentence, ID
                     string creatExprsTableQuery = "CREATE TABLE [Expression] ([Sentence] NVARCHAR(MAX), [ID] INT)";
@@ -406,7 +401,7 @@ namespace PROJ
 
                     Console.WriteLine("Expression table created successfully!");
 
-                    ///2.2.0
+                    ///7
                     //the expression location storage table 
                     //THE COLUMNS: file , lineNum, wordNum, ID                  
                     string creatExprslocationTableQuery = "CREATE TABLE [PhraseLocation] ([file] NVARCHAR(MAX), [lineNum] INT, [wordNum] INT, [ID] INT)";
@@ -454,8 +449,8 @@ namespace PROJ
                         /*if the file doesnt exists we must 
                         1. create a file properties entry in file table 
                         2. load all words in the content table
-                        3. load all new metadata in the metadata registery table 
-                        4. create metadata mapping entry for the file in the metadata table 
+                        3. load all new metadata in the registery and for each file
+                        4. updata the expression locations
                          */
                         if (fileCount == 0)
                         {
@@ -493,7 +488,8 @@ namespace PROJ
                             wordInsert(filePath);
                         }
                     }
-
+                    //after the new words have been added need to update the locations of saved expressions in the new file
+                    updateExpression(); 
                     Console.WriteLine("Entries added successfully!");
                 }
                 catch (Exception ex)
@@ -525,12 +521,12 @@ namespace PROJ
             int wordInLineNum = 0;
             int charInWordNum = 0;
 
-            // Regular expression pattern for word splitting
-            Regex wordRegex = new Regex(@"\b\w+\b");
 
             // Open the file for reading
             using (StreamReader reader = new StreamReader(filePath))
             {
+                bool mtd =false; //a flag to remind that the next word is a metadata value that should be handeled
+                string mtd_type = "";
                 string line;
                 while ((line = reader.ReadLine()) != null)
                 {
@@ -558,6 +554,10 @@ namespace PROJ
                     string[] words = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                     foreach (string word in words)
                     {
+                        //in the previous word the mtd flag was set so in the current word is sent to be added as metadata
+                        //we assume that the files are correct and there is no metadata on teh first word, in first iteration the flag is false 
+                        if (mtd) MTDHandler(word, mtd_type, filePath);
+
                         //get the word's charecter number (length)
                         charInWordNum = word.Length;
                         //when we get to new word in the current line the counter increase
@@ -566,23 +566,14 @@ namespace PROJ
                         // Insert word data into the "content" table
                         InsertWordData(word, filePath, charInWordNum, paragNum, lineInParagNum, lineNum, charInLineNum, wordInLineNum);
 
-                        // Check for special words and call the corresponding function
-                        switch (word)
+                        // Check for special words and call the corresponding function                   
+                        if(word == "patient" || word == "doctor" || word == "diagnosis" || word == "treatment")
                         {
-                            case "patient":
-                                MTDHandler(word, 1, filePath);
-                                break;
-                            case "doctor":
-                                MTDHandler(word, 2, filePath);
-                                break;
-                            case "diagnosis":
-                                MTDHandler(word, 3, filePath);
-                                break;
-                            case "treatment":
-                                MTDHandler(word, 4, filePath);
-                                break;
-                        }
+                            mtd = true; //set the flag fo the next word
+                            mtd_type = word; //hold the word 
 
+                        }
+                                               
                         //after the new word the charecter in line count will prepare to the next word
                         //counter wil move up by the number of charecters in the word we past plus one for the space between them;
                         charInLineNum += charInWordNum + 1;
@@ -599,7 +590,20 @@ namespace PROJ
                 // Open the connection
                 connection.Open();
                 Console.WriteLine("inserting the words....");
-                int num = 1;
+                //create new id for the word
+                int MaxID = 0;
+                string GetMaxID = $"SELECT MAX(WordId) FROM Content";
+                using (SqlCommand IDcommand = new SqlCommand(GetMaxID, connection))
+                {
+                    var result = IDcommand.ExecuteScalar();
+                    if (result != DBNull.Value)
+                    {
+                        MaxID = Convert.ToInt32(result);
+                    }
+                }
+                //prep the new ID 
+                int num = MaxID + 1;
+
                 // Define your SQL query to insert data into the "content" table
                 string insertQuery = $"INSERT INTO Content (WordId, WordValue, [File], charCount, paragNum, lineInParagNum, lineNum, charInLineNum, wordInLineNum ) " +
                     $"VALUES (@WordId, @WordValue, @File, @charCount, @paragNum, @lineInParagNum, @lineNum, @charInLineNum, @wordInLineNum)";
@@ -629,38 +633,19 @@ namespace PROJ
 
 
         //this function inserts the id of the metadata it got to the correct column in the table
-        public static void MTDHandler(string word, int number, string fileName)
+        public static void MTDHandler(string word, string type, string fileName)
         {
-            Console.WriteLine("reading special chaaracters....");
+            Console.WriteLine("reading special characters....");
             // Get the WordId using the GetOrCreateEntryId function
-            int wordId = GetOrCreateEntryId(word, number);
+            int wordId = GetOrCreateEntryId(word);
 
-            // Determine which column to update based on the number
-            string columnName;
-            switch (number)
-            {
-                case 1:
-                    columnName = "Patient";
-                    break;
-                case 2:
-                    columnName = "Doctor";
-                    break;
-                case 3:
-                    columnName = "Diag";
-                    break;
-                case 4:
-                    columnName = "Treat";
-                    break;
-                default:
-                    throw new ArgumentException("Invalid number.");
-            }
 
             // Update the specified column in the table
             using (SqlConnection connection = new SqlConnection(connectionString))
             {
                 connection.Open();
 
-                string updateQuery = $"UPDATE MetaData SET {columnName} = @wordId WHERE FileName = @fileName";
+                string updateQuery = $"UPDATE MetaData SET {type} = @wordId WHERE FileName = @fileName";
 
                 using (SqlCommand command = new SqlCommand(updateQuery, connection))
                 {
@@ -675,7 +660,7 @@ namespace PROJ
         }
 
         //this function gets the value and metadata type as number and return the id of the metadata combo (existing or create new)
-        public static int GetOrCreateEntryId(string word, int number)
+        public static int GetOrCreateEntryId(string word)
         {
             int entryId = -1; // Default value if not found
 
@@ -684,13 +669,11 @@ namespace PROJ
             {
                 // Open the connection
                 connection.Open();
-                Console.WriteLine("here1....");
                 // Create a SqlCommand to check if the combination exists
-                string checkQuery = "SELECT id FROM MTDREG WHERE value = @word AND type = @number";
+                string checkQuery = "SELECT id FROM MTDREG WHERE value = @word ";
                 using (SqlCommand checkCommand = new SqlCommand(checkQuery, connection))
                 {
                     checkCommand.Parameters.AddWithValue("@word", word);
-                    checkCommand.Parameters.AddWithValue("@number", number);
 
                     // Execute the query
                     using (SqlDataReader reader = checkCommand.ExecuteReader())
@@ -706,12 +689,10 @@ namespace PROJ
                 // If entryId is still -1, it means the combination doesn't exist, so we insert a new entry
                 if (entryId == -1)
                 {
-                    Console.WriteLine("here2....");
-                    string insertQuery = "INSERT INTO MTDREG (value, type) VALUES (@word, @number); SELECT SCOPE_IDENTITY();";
+                    string insertQuery = "INSERT INTO MTDREG (value) VALUES (@word); SELECT SCOPE_IDENTITY();";
                     using (SqlCommand insertCommand = new SqlCommand(insertQuery, connection))
                     {
                         insertCommand.Parameters.AddWithValue("@word", word);
-                        insertCommand.Parameters.AddWithValue("@number", number);
 
                         // Execute the insert query and get the newly generated ID
                         entryId = Convert.ToInt32(insertCommand.ExecuteScalar());
@@ -847,7 +828,8 @@ namespace PROJ
                                         //get the number of characters in the word 
                                         using (SqlConnection connection = new SqlConnection(connectionString))
                                         {
-                                            connection.Open();                                            //get charecter number
+                                            connection.Open(); 
+                                            //get charecter number
                                             //query the charNum in the entry of the word/line/file combo
                                             string wordquery = "SELECT WordValue, charCount FROM Content WHERE wordInLineNum = @word AND lineNum = @lineNum AND  File = @fileName ";
                                             using (SqlCommand wordcommand = new SqlCommand(wordquery, connection))
@@ -970,10 +952,11 @@ namespace PROJ
                 connection.Open();
 
                 // Query to search for records containing the specified word
-                string query = $"SELECT File FROM Content WHERE WordValue LIKE '%{word}%'";
+                string query = $"SELECT File FROM Content WHERE WordValue = @word ";
 
                 using (SqlCommand command = new SqlCommand(query, connection))
                 {
+                    command.Parameters.AddWithValue("@word", word);
                     using (SqlDataReader reader = command.ExecuteReader())
                     {
                         while (reader.Read())
@@ -1007,11 +990,10 @@ namespace PROJ
                 connection.Open();
 
                 // Create a SqlCommand to check if the combination exists
-                string checkQuery = "SELECT id FROM MTDREG WHERE value = @word AND type = @number";
+                string checkQuery = "SELECT id FROM MTDREG WHERE value = @word";
                 using (SqlCommand checkCommand = new SqlCommand(checkQuery, connection))
                 {
                     checkCommand.Parameters.AddWithValue("@word", word);
-                    checkCommand.Parameters.AddWithValue("@number", number);
 
                     // Execute the query
                     using (SqlDataReader reader = checkCommand.ExecuteReader())
@@ -1048,30 +1030,38 @@ namespace PROJ
                     case 4:
                         columnName = "Treat";
                         break;
+                    case 0:
+                        columnName = "ALL";
+                        break;
                     default:
                         throw new ArgumentException("Invalid number.");
                 }
 
                 //find files matching the entryId in the specified column
-                string query = $"SELECT FileName FROM MetaData WHERE {columnName} = @entryId";
-                using (SqlCommand fileQueryCommand = new SqlCommand(query, connection))
+                string query;
+                if (columnName == "ALL")
                 {
-                    fileQueryCommand.Parameters.AddWithValue("@entryId", entryId);
-
-                    using (SqlDataReader reader = fileQueryCommand.ExecuteReader())
+                    query = $"SELECT FileName FROM MetaData WHERE {"Patient"} = @entryId OR {"Doctor"} = @entryId OR {"Diag"} = @entryId OR {"Treat"} = @entryId";
+                }
+                else  query = $"SELECT FileName FROM MetaData WHERE {columnName} = @entryId";
+                using (SqlCommand fileQueryCommand = new SqlCommand(query, connection))
                     {
-                        while (reader.Read())
+                        fileQueryCommand.Parameters.AddWithValue("@entryId", entryId);
+
+                        using (SqlDataReader reader = fileQueryCommand.ExecuteReader())
                         {
-                            string fileName = reader["FileName"].ToString();
-                            //if the file we got is not null and not already in the list 
-                            if (!string.IsNullOrEmpty(fileName) && !fileList.Contains(fileName))
+                            while (reader.Read())
                             {
-                                fileList.Add(fileName);
-                                Console.WriteLine($"Found file: {fileName}");
+                                string fileName = reader["FileName"].ToString();
+                                //if the file we got is not null and not already in the list 
+                                if (!string.IsNullOrEmpty(fileName) && !fileList.Contains(fileName))
+                                {
+                                    fileList.Add(fileName);
+                                    Console.WriteLine($"Found file: {fileName}");
+                                }
                             }
                         }
-                    }
-                }
+                    }               
             }
             return fileList;
         }
@@ -1186,51 +1176,85 @@ namespace PROJ
         {
 
             List<string> wordsInRange = new List<string>();
-            //get the location of the of the word 
+            //get the location of the word 
             Console.WriteLine("Enter a file:");
             string file = Console.ReadLine();
-            Console.WriteLine("Enter a sentence number in file:");
-            string num = Console.ReadLine();
 
-            if (!string.IsNullOrEmpty(file) && !int.TryParse(num, out  int x))
+            if (!string.IsNullOrEmpty(file))
             {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                //find all sentence numbers that has the given word in it 
+                int x = getLine(givenWord, file);
+                if (x != -1) 
                 {
-                    connection.Open();
-                    // Retrieve words within the specified sentence range from the same file
-                    string selectQuery = "SELECT WordValue FROM Content " +
-                                     "WHERE File = @file " +
-                                     "AND lineNum BETWEEN @minSentence AND @maxSentence " +
-                                     "ORDER BY lineNum, wordInLineNum";
-
-                    int sentenceRange = 3;
-                    int minSentence = Math.Max(1, x - sentenceRange);
-                    int maxSentence = x + sentenceRange;
-
-                    using (SqlCommand selectCommand = new SqlCommand(selectQuery, connection))
+                    using (SqlConnection connection = new SqlConnection(connectionString))
                     {
-                        selectCommand.Parameters.AddWithValue("@file", file);
-                        selectCommand.Parameters.AddWithValue("@minSentence", minSentence);
-                        selectCommand.Parameters.AddWithValue("@maxSentence", maxSentence);
+                        connection.Open();
+                        // Retrieve words within the specified sentence range from the same file
+                        string selectQuery = "SELECT WordValue FROM Content " +
+                                         "WHERE File = @file " +
+                                         "AND lineNum BETWEEN @minSentence AND @maxSentence " +
+                                         "ORDER BY lineNum, wordInLineNum";
 
-                        SqlDataReader wordReader = selectCommand.ExecuteReader();
-                        while (wordReader.Read())
+                        int sentenceRange = 3;
+                        int minSentence = Math.Max(1, x - sentenceRange);
+                        int maxSentence = x + sentenceRange;
+
+                        using (SqlCommand selectCommand = new SqlCommand(selectQuery, connection))
                         {
-                            string word = wordReader["WordValue"].ToString();
-                            wordsInRange.Add(word);
-                        }
+                            selectCommand.Parameters.AddWithValue("@file", file);
+                            selectCommand.Parameters.AddWithValue("@minSentence", minSentence);
+                            selectCommand.Parameters.AddWithValue("@maxSentence", maxSentence);
 
+                            SqlDataReader wordReader = selectCommand.ExecuteReader();
+                            while (wordReader.Read())
+                            {
+                                string word = wordReader["WordValue"].ToString();
+                                wordsInRange.Add(word);
+                            }
+
+                        }
                     }
                 }
 
             }
             else Console.WriteLine("Invalid input. Please provide a non-empty parameters ");
 
-            //print the kist as a peragraph to show the part where the word was 
+            //print the list as a peragraph to show the part where the word was 
             Console.WriteLine(string.Join(" ", wordsInRange));
         }
+        //gets the word and file and print all line numbers that has this word 
+        //asks user to pick a line and reeturnes this line to view the context of this word
+        static int getLine(string givenWord, string file)
+        {
+            List<string> lineList = new List<string>();
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+                // Retrieve words within the specified sentence range from the same file
+                string selectQuery = "SELECT lineNum FROM Content WHERE File = @file AND WordValue = @givenword";
+                using (SqlCommand selectCommand = new SqlCommand(selectQuery, connection))
+                {
+                    selectCommand.Parameters.AddWithValue("@file", file);
+                    selectCommand.Parameters.AddWithValue("@givenword", givenWord);
 
-
+                    SqlDataReader wordReader = selectCommand.ExecuteReader();
+                    while (wordReader.Read())
+                    {
+                        string lineNum = wordReader["lineNum"].ToString();
+                        lineList.Add(lineNum);
+                    }
+                }
+            }
+            print(lineList);
+            Console.WriteLine("please choose a line number to view: [or type -1]");
+            string num = Console.ReadLine();
+            if (!string.IsNullOrEmpty(num))
+            {
+                int n = Convert.ToInt32(num);
+                return n;
+            }
+            return -1;
+        }
         ///--------------------------------------------------------------------------------------------///
         
         /// gets a list of words and a group name and records all those ords as in this group
@@ -1470,7 +1494,7 @@ namespace PROJ
                     insertCommand.Parameters.AddWithValue("@firstlineNum", firstlineNum);
                     insertCommand.Parameters.AddWithValue("@WordNum", firstWordNum);
         
-            insertCommand.ExecuteNonQuery();
+                    insertCommand.ExecuteNonQuery();
                 }
             }
         }
@@ -1529,8 +1553,12 @@ namespace PROJ
         static public bool matchCheck(string[] expression, string file, int firstlineNum, int firstWordNum)
         {
             //set the current table word index
-            int currWordInLineNum = firstlineNum;
-            int currLineNum = firstWordNum;
+            int currWordInLineNum =  firstWordNum;
+            int currLineNum = firstlineNum;
+
+            int last = 0;
+            int nextWordInLine = 0;
+            int nextLineNum = 0;
 
             //for the length of the expression, starting from the second word as we entered the loop from the first word match
             for (int i = 0; i < expression.Length; i++)
@@ -1538,15 +1566,37 @@ namespace PROJ
                 //get the expression word
                 string expWord = expression[i];
                 //get the table word 
-                string nextWord = null;
-                //option one: the word is the next in the same sentence
-                int nextWordInLine = currWordInLineNum + 1;
-                int nextLineNum = currLineNum;
-
+                string nextWord = null;     
                 using (SqlConnection connection = new SqlConnection(connectionString))
                 {
                     connection.Open();
+                    //check if its last word                   
+                    string checklastquery = "SELECT MAX(wordInLineNum) AS last FROM Content WHERE LineNum = @currLineNum AND File = @file  ";
+                    using (SqlCommand checklast = new SqlCommand(checklastquery, connection))
+                    {
+                        checklast.Parameters.AddWithValue("@num", currLineNum);
+                        checklast.Parameters.AddWithValue("@FileName", file);
 
+                        SqlDataReader reader = checklast.ExecuteReader();
+                        if (reader.Read())
+                        {
+                            last = Convert.ToInt32(reader["last"]);
+                        }
+                    }
+                    //get the next index
+                    if (currWordInLineNum == last)
+                    {
+                        //the word is the first in the next sentence
+                        nextWordInLine =  1;
+                        nextLineNum = currLineNum + 1;
+                    }
+                    else
+                    {
+                        //the word is the next in the same sentence
+                        nextWordInLine = currWordInLineNum + 1;
+                        nextLineNum = currLineNum;
+                    }
+                    //get the next word 
                     string query = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = @nextWordInLine)";
 
                     using (SqlCommand command = new SqlCommand(query, connection))
@@ -1564,33 +1614,7 @@ namespace PROJ
                         }
                     }
                 }
-
-                // If no word was found in the same line then look for the first word in the next line, 
-                if (!string.IsNullOrEmpty(nextWord))
-                {
-                    // increment currLineNum and WordInLineNum = 0 
-                    nextLineNum = currLineNum + 1;
-                    using (SqlConnection connection = new SqlConnection(connectionString))
-                    {
-                        connection.Open();
-
-                        string queryNextLine = @"SELECT Word FROM Content WHERE File = @file AND (LineNum = @nextLineNum AND WordInLineNum = 0)";
-
-                        using (SqlCommand commandNextLine = new SqlCommand(queryNextLine, connection))
-                        {
-                            commandNextLine.Parameters.AddWithValue("@file", file);
-                            commandNextLine.Parameters.AddWithValue("@nextLineNum", nextLineNum);
-
-                            using (SqlDataReader readerNextLine = commandNextLine.ExecuteReader())
-                            {
-                                if (readerNextLine.Read())
-                                {
-                                    nextWord = readerNextLine.GetString(0);
-                                }
-                            }
-                        }
-                    }
-                }
+               
                 //if they mismatch (or a next word was not found), break and return false 
                 if (expWord != nextWord) return false;
 
@@ -1640,7 +1664,7 @@ namespace PROJ
                 connection.Open();
 
                 // Retrieve data from the "MetaData" table
-                string query = "SELECT * FROM MetaData";
+                string query = "SELECT Patient,Doctor,Diag,Treat FROM MetaData";
 
                 using (SqlCommand command = new SqlCommand(query, connection))
                 {
@@ -1649,15 +1673,13 @@ namespace PROJ
 
                     while (reader.Read())
                     {
-                        string fileName = reader["FileName"].ToString();
                         string patient = reader["Patient"].ToString();
                         string doctor = reader["Doctor"].ToString();
                         string diag = reader["Diag"].ToString();
                         string treat = reader["Treat"].ToString();
-                        string summary = reader["Summary"].ToString();
 
                         // Add attributes of interest to the transaction
-                        List<string> transaction = new List<string> { fileName, patient, doctor, diag, treat, summary };
+                        List<string> transaction = new List<string> { patient, doctor, diag, treat};
                         transactions.Add(transaction);
                     }
 
